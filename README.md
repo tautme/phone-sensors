@@ -1,5 +1,7 @@
 # phone-sensors
 
+
+
 What happens on the weekend in twenty and twenty six, when walking along the beach you see a distant camera flash? You remember the time you were in a stadium trying to find a friend, but the cell network was jammed by eighty thousand people. Flash your cell phone light to locate them, and then wish you had the time to build an app that transmitted and recieved messages with a morse code light via cell phone camera. This weekend, we go down that rabbit hole of sensors with Claude taking the time to build.
 
 Ten small HTML files exploring what a smartphone's sensors can do from inside a browser. No apps, no installs, no servers.
