@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Connection Health Monitor</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 1.2rem auto;
+         padding: 0 1rem; line-height: 1.4; background: #0f1420; color: #e6e6ea; }
+  h1 { font-size: 1.4rem; margin: 0 0 .8rem; }
+  h2 { font-size: .95rem; margin: 1rem 0 .3rem; color: #a8b0c2; font-weight: 600;
+       text-transform: uppercase; letter-spacing: .04em; }
+  .row { display: flex; gap: .5rem; align-items: center; margin: .4rem 0; flex-wrap: wrap; }
+  button { padding: .5rem .9rem; font-size: .95rem; cursor: pointer;
+           background: #2a3148; color: #e6e6ea; border: 1px solid #3d4663; border-radius: 4px; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  button.danger { background: #b3261e; border-color: #b3261e; color: #fff; }
+  .pill { padding: 2px 10px; border-radius: 999px; font-size: .75rem; background: #2a3148; }
+  .pill.on { background: #16a34a; color: #fff; }
+  .pill.warn { background: #d4a017; color: #fff; }
+  .pill.err { background: #b3261e; color: #fff; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; margin: .6rem 0; }
+  .tile { background: #1a2030; border: 1px solid #2a3148; border-radius: 6px; padding: .7rem .8rem; }
+  .tile .label { font-size: .7rem; color: #a8b0c2; text-transform: uppercase; letter-spacing: .04em; }
+  .tile .value { font-family: ui-monospace, monospace; font-size: 1.4rem; font-weight: 600; margin-top: .15rem; }
+  .tile .sub { font-size: .75rem; color: #a8b0c2; }
+  canvas { display: block; width: 100%; background: #0a0e18; border: 1px solid #2a3148; border-radius: 6px; }
+  #rttChart, #spdChart { height: 160px; }
+  #log { font-family: ui-monospace, monospace; font-size: .8rem; white-space: pre-wrap;
+         background: #0a0e18; border: 1px solid #2a3148; border-radius: 6px;
+         padding: .5rem .7rem; max-height: 12em; overflow-y: auto; margin: 0; }
+  small { color: #a8b0c2; }
+  input, select { padding: .35rem .5rem; background: #0a0e18; color: #e6e6ea;
+                  border: 1px solid #2a3148; border-radius: 4px; font-size: .9rem; }
+  input[type=number] { width: 4.5rem; }
+  input[type=checkbox] { vertical-align: middle; }
+  label { display: inline-flex; align-items: center; gap: .35rem; font-size: .9rem; }
+  .err-line { color: #ff8585; }
+  .warn-line { color: #f5c95a; }
+</style>
+</head>
+<body>
+
+<h1>Connection Health Monitor</h1>
+
+<div class="row">
+  <button id="start" class="primary">Start</button>
+  <button id="stop" disabled>Stop</button>
+  <button id="speedNow" disabled>Run speed test now</button>
+  <span id="state" class="pill">idle</span>
+  <span id="online" class="pill">—</span>
+</div>
+
+<div class="tiles">
+  <div class="tile">
+    <div class="label">RTT</div>
+    <div class="value" id="rttVal">— ms</div>
+    <div class="sub" id="rttSub">last ping</div>
+  </div>
+  <div class="tile">
+    <div class="label">Download</div>
+    <div class="value" id="spdVal">— Mbps</div>
+    <div class="sub" id="spdSub">last test</div>
+  </div>
+  <div class="tile">
+    <div class="label">Connection</div>
+    <div class="value" id="connVal">—</div>
+    <div class="sub" id="connSub">browser estimate</div>
+  </div>
+</div>
+
+<h2>RTT (ms) over time</h2>
+<canvas id="rttChart"></canvas>
+
+<h2>Download speed (Mbps) over time</h2>
+<canvas id="spdChart"></canvas>
+
+<h2>Stats</h2>
+<div class="tiles">
+  <div class="tile">
+    <div class="label">RTT</div>
+    <div class="value" id="rttStats" style="font-size:.95rem;">—</div>
+    <div class="sub">min / median / p95 / max</div>
+  </div>
+  <div class="tile">
+    <div class="label">Download</div>
+    <div class="value" id="spdStats" style="font-size:.95rem;">—</div>
+    <div class="sub">min / median / p95 / max</div>
+  </div>
+  <div class="tile">
+    <div class="label">Counts</div>
+    <div class="value" id="cntStats" style="font-size:.95rem;">—</div>
+    <div class="sub">pings / fails / speed runs</div>
+  </div>
+</div>
+
+<h2>Settings</h2>
+<div class="row">
+  <label>ping every <input id="pingEvery" type="number" min="2" max="60" value="5"> s</label>
+  <label>speed test every <input id="speedEvery" type="number" min="0" max="3600" value="60"> s <small>(0 = manual)</small></label>
+  <label>size <select id="speedSize">
+    <option value="1000000">1 MB</option>
+    <option value="5000000" selected>5 MB</option>
+    <option value="25000000">25 MB</option>
+  </select></label>
+</div>
+<div class="row">
+  <label>endpoint <select id="endpoint">
+    <option value="cf">Cloudflare (default)</option>
+  </select></label>
+  <small>Cloudflare's speed-test endpoint is CORS-friendly and globally distributed.</small>
+</div>
+
+<h2>Event log</h2>
+<pre id="log"></pre>
+<div class="row">
+  <button id="clearLog">Clear log</button>
+  <button id="dlJson" disabled>Download JSON</button>
+  <button id="dlCsv" disabled>Download CSV</button>
+</div>
+
+<p><small>RTT measures the time to fetch a 0-byte response from the endpoint. Speed test downloads N bytes once and divides. Background tabs are throttled by browsers — measurements pause when this tab isn't focused.</small></p>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ---------- state ----------
+const pings = [];   // { t, rtt, success, error? }
+const speeds = [];  // { t, bytes, ms, mbps }
+const events = [];  // { t, type, msg }
+let running = false;
+let pingTimer = null, speedTimer = null;
+let pingInflight = false, speedInflight = false;
+let pingAbort = null, speedAbort = null;
+const startedAt = new Date();
+
+// ---------- endpoints ----------
+const endpoints = {
+  cf: {
+    ping: bytes => `https://speed.cloudflare.com/__down?bytes=${bytes}`,
+    pingBytes: 0,
+    speed: bytes => `https://speed.cloudflare.com/__down?bytes=${bytes}`
+  }
+};
+function ep() { return endpoints[$('endpoint').value]; }
+
+// ---------- log ----------
+function logMsg(type, msg) {
+  const t = new Date();
+  const ts = t.toLocaleTimeString();
+  const cls = type === 'error' ? 'err-line' : type === 'warn' ? 'warn-line' : '';
+  const line = `[${ts}] ${msg}\n`;
+  const el = $('log');
+  el.innerHTML += cls ? `<span class="${cls}">${line}</span>` : line;
+  el.scrollTop = el.scrollHeight;
+  events.push({ t: t.toISOString(), type, msg });
+}
+
+// ---------- online / offline ----------
+function updateOnline() {
+  const on = navigator.onLine;
+  $('online').textContent = on ? 'online' : 'offline';
+  $('online').className = 'pill ' + (on ? 'on' : 'err');
+}
+window.addEventListener('online',  () => { updateOnline(); logMsg('info', 'browser reports ONLINE'); });
+window.addEventListener('offline', () => { updateOnline(); logMsg('warn', 'browser reports OFFLINE'); });
+updateOnline();
+
+// ---------- connection info (browser hint) ----------
+function updateConn() {
+  const c = navigator.connection || navigator.webkitConnection || navigator.mozConnection;
+  if (!c) {
+    $('connVal').textContent = 'n/a';
+    $('connSub').textContent = 'navigator.connection unavailable';
+    return;
+  }
+  $('connVal').textContent = (c.effectiveType || '?').toUpperCase();
+  const dl = c.downlink ? c.downlink.toFixed(1) + ' Mbps' : '—';
+  const rtt = c.rtt ? c.rtt + ' ms' : '—';
+  $('connSub').textContent = `~${dl}, rtt ~${rtt}` + (c.saveData ? ', save-data' : '');
+}
+updateConn();
+if (navigator.connection) navigator.connection.addEventListener('change', updateConn);
+
+// ---------- start / stop ----------
+$('start').onclick = start;
+$('stop').onclick = stop;
+$('speedNow').onclick = () => doSpeed();
+$('clearLog').onclick = () => { $('log').innerHTML = ''; events.length = 0; };
+$('dlJson').onclick = downloadJson;
+$('dlCsv').onclick = downloadCsv;
+
+function start() {
+  if (running) return;
+  running = true;
+  $('start').disabled = true;
+  $('stop').disabled = false;
+  $('speedNow').disabled = false;
+  $('dlJson').disabled = false;
+  $('dlCsv').disabled = false;
+  $('state').textContent = 'monitoring';
+  $('state').className = 'pill on';
+  logMsg('info', `started — ping ${$('pingEvery').value}s, speed every ${$('speedEvery').value}s`);
+  scheduleNext();
+}
+function stop() {
+  running = false;
+  if (pingTimer) clearTimeout(pingTimer);
+  if (speedTimer) clearTimeout(speedTimer);
+  if (pingAbort) try { pingAbort.abort(); } catch {}
+  if (speedAbort) try { speedAbort.abort(); } catch {}
+  $('start').disabled = false;
+  $('stop').disabled = true;
+  $('speedNow').disabled = true;
+  $('state').textContent = 'stopped';
+  $('state').className = 'pill';
+  logMsg('info', 'stopped');
+}
+
+function scheduleNext() {
+  if (!running) return;
+  // ping
+  doPing();
+  pingTimer = setTimeout(scheduleNext, Math.max(2, +$('pingEvery').value) * 1000);
+  // speed (separate cadence)
+  const se = +$('speedEvery').value;
+  if (se > 0 && !speedTimer) {
+    const tick = () => {
+      if (!running) return;
+      doSpeed();
+      speedTimer = setTimeout(tick, Math.max(5, +$('speedEvery').value) * 1000);
+    };
+    speedTimer = setTimeout(tick, se * 1000);
+  }
+}
+
+// ---------- ping ----------
+async function doPing() {
+  if (pingInflight) return;
+  pingInflight = true;
+  pingAbort = new AbortController();
+  const t0 = performance.now();
+  const url = ep().ping(ep().pingBytes) + '&_=' + Math.random();
+  try {
+    const res = await fetch(url, { cache: 'no-store', signal: pingAbort.signal });
+    // ensure body fully drained for fair timing
+    await res.arrayBuffer();
+    const rtt = performance.now() - t0;
+    pings.push({ t: Date.now(), rtt, success: true });
+    if (pings.length > 5000) pings.shift();
+    $('rttVal').textContent = rtt.toFixed(0) + ' ms';
+    $('rttSub').textContent = 'last ping · ' + new Date().toLocaleTimeString();
+    drawRtt();
+    updateStats();
+    // spike detection
+    const recent = pings.slice(-20).filter(p => p.success).map(p => p.rtt);
+    if (recent.length >= 10) {
+      const med = median(recent);
+      if (rtt > Math.max(150, med * 3)) logMsg('warn', `RTT spike: ${rtt.toFixed(0)} ms (median ${med.toFixed(0)})`);
+    }
+  } catch (e) {
+    pings.push({ t: Date.now(), rtt: NaN, success: false, error: e.message });
+    $('rttVal').textContent = 'fail';
+    $('rttSub').textContent = e.message;
+    logMsg('error', 'ping failed: ' + e.message);
+    drawRtt();
+    updateStats();
+  } finally {
+    pingInflight = false;
+  }
+}
+
+// ---------- speed ----------
+async function doSpeed() {
+  if (speedInflight) return;
+  speedInflight = true;
+  speedAbort = new AbortController();
+  const bytes = +$('speedSize').value;
+  const url = ep().speed(bytes) + '&_=' + Math.random();
+  $('spdSub').textContent = 'running…';
+  const t0 = performance.now();
+  try {
+    const res = await fetch(url, { cache: 'no-store', signal: speedAbort.signal });
+    const reader = res.body.getReader();
+    let received = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.length;
+    }
+    const ms = performance.now() - t0;
+    const mbps = (received * 8) / (ms / 1000) / 1e6;
+    speeds.push({ t: Date.now(), bytes: received, ms, mbps });
+    if (speeds.length > 5000) speeds.shift();
+    $('spdVal').textContent = mbps.toFixed(1) + ' Mbps';
+    $('spdSub').textContent = `${(received/1e6).toFixed(1)} MB in ${(ms/1000).toFixed(1)} s`;
+    drawSpd();
+    updateStats();
+    logMsg('info', `speed: ${mbps.toFixed(1)} Mbps (${(received/1e6).toFixed(1)} MB in ${(ms/1000).toFixed(1)} s)`);
+  } catch (e) {
+    $('spdVal').textContent = 'fail';
+    $('spdSub').textContent = e.message;
+    logMsg('error', 'speed test failed: ' + e.message);
+  } finally {
+    speedInflight = false;
+  }
+}
+
+// ---------- stats ----------
+function median(a) { const s=[...a].sort((x,y)=>x-y); return s[Math.floor(s.length/2)]; }
+function pct(a, p) { const s=[...a].sort((x,y)=>x-y); return s[Math.min(s.length-1, Math.floor(s.length*p))]; }
+function updateStats() {
+  const ok = pings.filter(p => p.success).map(p => p.rtt);
+  $('rttStats').textContent = ok.length
+    ? `${Math.min(...ok).toFixed(0)} / ${median(ok).toFixed(0)} / ${pct(ok,0.95).toFixed(0)} / ${Math.max(...ok).toFixed(0)} ms`
+    : '—';
+  const sp = speeds.map(s => s.mbps);
+  $('spdStats').textContent = sp.length
+    ? `${Math.min(...sp).toFixed(1)} / ${median(sp).toFixed(1)} / ${pct(sp,0.95).toFixed(1)} / ${Math.max(...sp).toFixed(1)} Mbps`
+    : '—';
+  const fails = pings.filter(p => !p.success).length;
+  $('cntStats').textContent = `${pings.length} / ${fails} / ${speeds.length}`;
+}
+
+// ---------- charts ----------
+const rttCanvas = $('rttChart'), rttCtx = rttCanvas.getContext('2d');
+const spdCanvas = $('spdChart'), spdCtx = spdCanvas.getContext('2d');
+
+function fitCanvas(c) {
+  const dpr = window.devicePixelRatio || 1;
+  const r = c.getBoundingClientRect();
+  c.width = Math.round(r.width * dpr);
+  c.height = Math.round(r.height * dpr);
+  c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+function fitAll() { fitCanvas(rttCanvas); fitCanvas(spdCanvas); drawRtt(); drawSpd(); }
+window.addEventListener('resize', fitAll);
+fitAll();
+
+function drawChart(ctx, c, points, color, unit, opts={}) {
+  const W = c.getBoundingClientRect().width, H = c.getBoundingClientRect().height;
+  ctx.fillStyle = '#0a0e18'; ctx.fillRect(0, 0, W, H);
+  if (!points.length) return;
+
+  const tEnd = Date.now();
+  const window = (opts.windowSec || 600) * 1000; // 10 min default
+  const tStart = tEnd - window;
+  const recent = points.filter(p => p.t >= tStart);
+  if (!recent.length) return;
+
+  const vals = recent.filter(p => isFinite(p.v)).map(p => p.v);
+  if (!vals.length) return;
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (opts.minLo !== undefined) lo = Math.min(lo, opts.minLo);
+  if (hi - lo < 1e-6) { hi = lo + 1; }
+  const padR = (hi - lo) * 0.15;
+  hi += padR; lo = Math.max(0, lo - padR);
+
+  // grid
+  ctx.strokeStyle = '#1f2740'; ctx.lineWidth = 1;
+  for (let i = 1; i < 4; i++) {
+    const y = (H * i) / 4;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+
+  const xOf = t => ((t - tStart) / window) * W;
+  const yOf = v => H - ((v - lo) / (hi - lo)) * H;
+
+  // line
+  ctx.strokeStyle = color; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  let started = false;
+  for (const p of recent) {
+    if (!isFinite(p.v)) { started = false; continue; }
+    const x = xOf(p.t), y = yOf(p.v);
+    if (!started) { ctx.moveTo(x, y); started = true; }
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // dots
+  ctx.fillStyle = color;
+  for (const p of recent) {
+    if (!isFinite(p.v)) continue;
+    ctx.beginPath(); ctx.arc(xOf(p.t), yOf(p.v), 2, 0, 7); ctx.fill();
+  }
+
+  // failure markers (red x)
+  ctx.strokeStyle = '#ff5858'; ctx.lineWidth = 1.5;
+  for (const p of recent) {
+    if (!p.fail) continue;
+    const x = xOf(p.t);
+    ctx.beginPath();
+    ctx.moveTo(x-4, H-6); ctx.lineTo(x+4, H-2);
+    ctx.moveTo(x+4, H-6); ctx.lineTo(x-4, H-2);
+    ctx.stroke();
+  }
+
+  // axis labels
+  ctx.fillStyle = '#a8b0c2'; ctx.font = '11px ui-monospace, monospace';
+  ctx.fillText(`${hi.toFixed(unit==='ms'?0:1)} ${unit}`, 4, 12);
+  ctx.fillText(`${lo.toFixed(unit==='ms'?0:1)} ${unit}`, 4, H - 4);
+  ctx.textAlign = 'right';
+  ctx.fillText('now', W - 4, H - 4);
+  ctx.textAlign = 'left';
+}
+
+function drawRtt() {
+  const points = pings.map(p => ({ t: p.t, v: p.success ? p.rtt : NaN, fail: !p.success }));
+  drawChart(rttCtx, rttCanvas, points, '#4ecdc4', 'ms', { minLo: 0 });
+}
+function drawSpd() {
+  const points = speeds.map(s => ({ t: s.t, v: s.mbps }));
+  drawChart(spdCtx, spdCanvas, points, '#ffe66d', 'Mbps', { minLo: 0 });
+}
+
+// ---------- export ----------
+function downloadJson() {
+  const data = {
+    metadata: {
+      app: 'Connection Health Monitor',
+      sessionStart: startedAt.toISOString(),
+      exportedAt: new Date().toISOString(),
+      endpoint: $('endpoint').value,
+      pingIntervalSec: +$('pingEvery').value,
+      speedIntervalSec: +$('speedEvery').value,
+      speedSizeBytes: +$('speedSize').value,
+      userAgent: navigator.userAgent
+    },
+    pings: pings.map(p => ({ ...p, t: new Date(p.t).toISOString() })),
+    speeds: speeds.map(s => ({ ...s, t: new Date(s.t).toISOString() })),
+    events
+  };
+  saveBlob(JSON.stringify(data, null, 2), 'application/json', 'connection-health.json');
+}
+function downloadCsv() {
+  const rows = [['time','kind','rtt_ms','speed_mbps','bytes','ms','event']];
+  for (const p of pings) rows.push([new Date(p.t).toISOString(), 'ping',
+    p.success ? p.rtt.toFixed(2) : '', '', '', '', p.success ? '' : ('FAIL: ' + (p.error||''))]);
+  for (const s of speeds) rows.push([new Date(s.t).toISOString(), 'speed',
+    '', s.mbps.toFixed(2), s.bytes, s.ms.toFixed(0), '']);
+  for (const e of events) rows.push([e.t, 'event', '', '', '', '', `${e.type}: ${e.msg}`]);
+  rows.sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  saveBlob(csv, 'text/csv', 'connection-health.csv');
+}
+function saveBlob(text, mime, filename) {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// initial draw
+drawRtt(); drawSpd();
+</script>
+</body>
+</html>

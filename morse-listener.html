@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Morse Listener</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 560px; margin: 2rem auto;
+         padding: 0 1rem; line-height: 1.5; }
+  h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+  .row { display: flex; gap: .6rem; align-items: center; margin: .5rem 0; flex-wrap: wrap; }
+  button { padding: .5rem 1rem; font-size: 1rem; cursor: pointer; }
+  meter, input[type=range] { width: 220px; }
+  #symbols { font-family: monospace; font-size: 1.3rem; min-height: 1.6em;
+             letter-spacing: 2px; }
+  #out { font-family: monospace; font-size: 1.05rem; white-space: pre-wrap;
+         word-break: break-word; min-height: 2.5em; border: 1px solid #8884;
+         padding: .6rem; border-radius: 6px; margin: 0; }
+  small { color: #888; }
+</style>
+</head>
+<body>
+
+<h1>Morse Listener</h1>
+
+<div class="row">
+  <button id="start">Start</button>
+  <button id="stop" disabled>Stop</button>
+  <button id="clear">Clear</button>
+</div>
+
+<div class="row">
+  <meter id="meter" min="0" max="0.1" value="0"></meter>
+  <span id="dot" style="width:.6rem;height:.6rem;border-radius:50%;background:#ccc;display:inline-block;"></span>
+</div>
+
+<div class="row">
+  <small>Threshold</small>
+  <input id="thr" type="range" min="0.001" max="0.05" step="0.001" value="0.008">
+  <small id="thrVal">0.008</small>
+</div>
+
+<div id="symbols">&nbsp;</div>
+<pre id="out"></pre>
+
+<p><small>Mic only works on <code>https://</code> or <code>localhost</code>. For local files:
+<code>python3 -m http.server</code> then open <code>http://localhost:8000/</code>.</small></p>
+
+<script>
+const MORSE = {
+  '.-':'A','-...':'B','-.-.':'C','-..':'D','.':'E','..-.':'F','--.':'G','....':'H',
+  '..':'I','.---':'J','-.-':'K','.-..':'L','--':'M','-.':'N','---':'O','.--.':'P',
+  '--.-':'Q','.-.':'R','...':'S','-':'T','..-':'U','...-':'V','.--':'W','-..-':'X',
+  '-.--':'Y','--..':'Z',
+  '-----':'0','.----':'1','..---':'2','...--':'3','....-':'4','.....':'5',
+  '-....':'6','--...':'7','---..':'8','----.':'9',
+  '.-.-.-':'.','--..--':',','..--..':'?','.----.':"'",'-.-.--':'!','-..-.':'/',
+  '-.--.':'(','-.--.-':')','.-...':'&','---...':':','-.-.-.':';','-...-':'=',
+  '.-.-.':'+','-....-':'-','..--.-':'_','.-..-.':'"','...-..-':'$','.--.-.':'@'
+};
+
+const $ = id => document.getElementById(id);
+let ctx, ana, src, stream, buf, running = false;
+let toneOn = false, tStart = 0;
+let symbols = '', lastSpace = true;
+const pulses = [], gaps = [];
+
+$('thr').oninput = e => $('thrVal').textContent = (+e.target.value).toFixed(3);
+$('clear').onclick = () => { $('out').textContent = ''; symbols = ''; $('symbols').textContent = '\u00a0'; lastSpace = true; };
+$('start').onclick = start;
+$('stop').onclick = stop;
+
+async function start() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+  } catch (e) { alert('Mic error: ' + e.message); return; }
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  src = ctx.createMediaStreamSource(stream);
+  ana = ctx.createAnalyser(); ana.fftSize = 1024;
+  buf = new Float32Array(ana.fftSize);
+  src.connect(ana);
+  pulses.length = 0; gaps.length = 0;
+  toneOn = false; tStart = performance.now();
+  running = true;
+  $('start').disabled = true; $('stop').disabled = false;
+  loop();
+}
+
+function stop() {
+  running = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  if (ctx) ctx.close();
+  $('start').disabled = false; $('stop').disabled = true;
+  $('dot').style.background = '#ccc';
+  flushLetter();
+}
+
+function rms() {
+  ana.getFloatTimeDomainData(buf);
+  let s = 0; for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+  return Math.sqrt(s / buf.length);
+}
+
+// Adaptive dot length: shortest recent pulse is our reference dot.
+function dotUnit() {
+  if (pulses.length < 2) return 80;
+  return Math.min(...pulses);
+}
+
+function classifyPulse(ms) {
+  if (ms < 20) return null; // noise blip
+  pulses.push(ms);
+  if (pulses.length > 20) pulses.shift();
+  return ms < dotUnit() * 2 ? '.' : '-';
+}
+
+// Word-gap threshold adapts to observed letter gaps (handles Farnsworth).
+function isWordGap(ms) {
+  if (gaps.length >= 3) return ms > Math.min(...gaps) * 1.7;
+  return ms > dotUnit() * 5;
+}
+
+function flushLetter() {
+  if (!symbols) return;
+  $('out').textContent += MORSE[symbols] || '?';
+  symbols = ''; $('symbols').textContent = '\u00a0';
+  lastSpace = false;
+}
+
+function addSpace() {
+  if (lastSpace) return;
+  $('out').textContent += ' '; lastSpace = true;
+}
+
+function loop() {
+  if (!running) return;
+  const now = performance.now();
+  const v = rms();
+  const thr = +$('thr').value;
+  const on = v > thr;
+
+  $('meter').value = v;
+  $('dot').style.background = on ? '#2ea043' : '#ccc';
+
+  if (on !== toneOn) {
+    const dur = now - tStart;
+    if (toneOn) {
+      const sym = classifyPulse(dur);
+      if (sym) { symbols += sym; $('symbols').textContent = symbols; }
+    } else {
+      if (dur > dotUnit() * 2) {
+        gaps.push(dur);
+        if (gaps.length > 15) gaps.shift();
+      }
+    }
+    toneOn = on; tStart = now;
+  } else if (!toneOn) {
+    const dur = now - tStart;
+    if (symbols && dur > dotUnit() * 2) flushLetter();
+    if (dur > dotUnit() * 5 && isWordGap(dur)) addSpace();
+  }
+
+  requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>

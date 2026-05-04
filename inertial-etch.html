@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inertial Etch</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 560px; margin: 1.5rem auto;
+         padding: 0 1rem; line-height: 1.4; }
+  h1 { font-size: 1.4rem; margin: 0 0 .8rem; }
+  .row { display: flex; gap: .6rem; align-items: center; margin: .5rem 0; flex-wrap: wrap; }
+  button { padding: .55rem 1rem; font-size: 1rem; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  #canvasWrap {
+    border: 4px solid #b00; border-radius: 14px; background: #c9c9b8;
+    box-shadow: inset 0 2px 6px #0004; padding: 8px;
+    aspect-ratio: 4 / 3; width: 100%;
+  }
+  canvas { width: 100%; height: 100%; display: block; background: #c9c9b8; }
+  #readout {
+    font-family: monospace; font-size: .85rem; white-space: pre;
+    border: 1px solid #8884; padding: .5rem .7rem; border-radius: 6px;
+    margin: 0; background: #8881;
+  }
+  #status { font-size: .9rem; color: #888; }
+  small { color: #888; }
+  label { display: inline-flex; align-items: center; gap: .35rem; }
+</style>
+</head>
+<body>
+
+<h1>Inertial Etch</h1>
+
+<div class="row">
+  <button id="enable">Enable sensors</button>
+  <button id="clear" disabled>Clear</button>
+  <span id="status">tap "Enable sensors" to start</span>
+</div>
+
+<div class="row">
+  <label><input id="useGyro" type="checkbox"> use gyroscope (rotation rate)</label>
+</div>
+<div class="row">
+  <label>sensitivity <input id="sens" type="range" min="0.2" max="5" step="0.1" value="1.5"></label>
+  <small id="sensVal">1.5</small>
+  <label style="margin-left:auto"><input id="shake" type="checkbox" checked> shake to clear</label>
+</div>
+
+<div id="canvasWrap"><canvas id="pad"></canvas></div>
+
+<pre id="readout">orientation:  α —    β —    γ —
+accel:        x —    y —    z —
+pen:          x —    y —</pre>
+
+<p><small>Tilt the phone like a tray — left/right moves the pen horizontally, forward/back moves it vertically.
+Needs <code>https://</code> or <code>localhost</code>. iOS asks for permission once.</small></p>
+
+<script>
+const $ = id => document.getElementById(id);
+const canvas = $('pad'), ctx = canvas.getContext('2d');
+const readout = $('readout');
+
+let running = false;
+let penX = 0, penY = 0;          // canvas-space pen position
+let lastT = 0;
+let orient = { alpha: 0, beta: 0, gamma: 0 };
+let accel = { x: 0, y: 0, z: 0 };
+let gyro = { alpha: 0, beta: 0, gamma: 0 }; // rotation rate, deg/s
+let useGyro = false;
+let sensitivity = 1.5;
+let calBeta = 0, calGamma = 0;   // tilt zero-points (set on enable)
+let lastShakeTime = 0;
+
+$('sens').oninput = e => {
+  sensitivity = +e.target.value;
+  $('sensVal').textContent = sensitivity.toFixed(1);
+};
+$('useGyro').onchange = e => { useGyro = e.target.checked; };
+$('clear').onclick = clearPad;
+$('enable').onclick = enable;
+
+// Resize canvas backing store to match displayed size for crisp drawing.
+function fitCanvas() {
+  const r = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(r.width * dpr);
+  canvas.height = Math.round(r.height * dpr);
+  ctx.scale(dpr, dpr);
+  ctx.lineWidth = 1.6;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#222';
+  // place pen in center if not set
+  if (penX === 0 && penY === 0) {
+    penX = r.width / 2;
+    penY = r.height / 2;
+  }
+}
+
+function clearPad() {
+  const r = canvas.getBoundingClientRect();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  penX = r.width / 2;
+  penY = r.height / 2;
+}
+
+async function enable() {
+  // iOS 13+ requires explicit permission for both events.
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const p = await DeviceOrientationEvent.requestPermission();
+      if (p !== 'granted') { $('status').textContent = 'orientation permission denied'; return; }
+    }
+    if (typeof DeviceMotionEvent !== 'undefined' &&
+        typeof DeviceMotionEvent.requestPermission === 'function') {
+      const p = await DeviceMotionEvent.requestPermission();
+      if (p !== 'granted') { $('status').textContent = 'motion permission denied'; return; }
+    }
+  } catch (e) {
+    $('status').textContent = 'permission error: ' + e.message; return;
+  }
+
+  window.addEventListener('deviceorientation', onOrient);
+  window.addEventListener('devicemotion', onMotion);
+
+  // Wait one tick to let the first event arrive, then snapshot zero-tilt.
+  setTimeout(() => {
+    calBeta = orient.beta || 0;
+    calGamma = orient.gamma || 0;
+    $('status').textContent = 'tilt to draw';
+  }, 300);
+
+  fitCanvas();
+  $('enable').disabled = true;
+  $('clear').disabled = false;
+  running = true;
+  lastT = performance.now();
+  requestAnimationFrame(loop);
+}
+
+function onOrient(e) {
+  orient.alpha = e.alpha || 0;
+  orient.beta  = e.beta  || 0;
+  orient.gamma = e.gamma || 0;
+}
+
+function onMotion(e) {
+  if (e.accelerationIncludingGravity) {
+    accel.x = e.accelerationIncludingGravity.x || 0;
+    accel.y = e.accelerationIncludingGravity.y || 0;
+    accel.z = e.accelerationIncludingGravity.z || 0;
+  }
+  if (e.rotationRate) {
+    gyro.alpha = e.rotationRate.alpha || 0;
+    gyro.beta  = e.rotationRate.beta  || 0;
+    gyro.gamma = e.rotationRate.gamma || 0;
+  }
+  // Detect a shake by raw accel magnitude minus gravity (~9.8 m/s²).
+  if ($('shake').checked && e.acceleration) {
+    const a = e.acceleration;
+    const mag = Math.hypot(a.x || 0, a.y || 0, a.z || 0);
+    const now = performance.now();
+    if (mag > 18 && now - lastShakeTime > 800) {
+      clearPad();
+      lastShakeTime = now;
+    }
+  }
+}
+
+function loop() {
+  if (!running) return;
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastT) / 1000); // clamp big gaps
+  lastT = now;
+
+  const r = canvas.getBoundingClientRect();
+  let vx, vy;
+
+  if (useGyro) {
+    // Rotation rate (deg/s). gamma = roll, beta = pitch.
+    vx = gyro.gamma * sensitivity * 0.6;
+    vy = gyro.beta  * sensitivity * 0.6;
+  } else {
+    // Static tilt relative to calibration zero-point.
+    const tiltX = orient.gamma - calGamma; // -90..90
+    const tiltY = orient.beta  - calBeta;  // -180..180
+    // Pixels-per-second proportional to tilt angle.
+    vx = tiltX * sensitivity * 4;
+    vy = tiltY * sensitivity * 4;
+  }
+
+  const newX = Math.max(0, Math.min(r.width,  penX + vx * dt));
+  const newY = Math.max(0, Math.min(r.height, penY + vy * dt));
+
+  if (newX !== penX || newY !== penY) {
+    ctx.beginPath();
+    ctx.moveTo(penX, penY);
+    ctx.lineTo(newX, newY);
+    ctx.stroke();
+    penX = newX; penY = newY;
+  }
+
+  readout.textContent =
+    `orientation:  α ${fmt(orient.alpha)}  β ${fmt(orient.beta)}  γ ${fmt(orient.gamma)}\n` +
+    `accel:        x ${fmt(accel.x)}  y ${fmt(accel.y)}  z ${fmt(accel.z)}\n` +
+    `pen:          x ${penX.toFixed(0)}  y ${penY.toFixed(0)}`;
+
+  requestAnimationFrame(loop);
+}
+
+function fmt(n) { return (n >= 0 ? ' ' : '') + n.toFixed(1).padStart(6); }
+
+window.addEventListener('resize', () => { if (running) fitCanvas(); });
+</script>
+</body>
+</html>

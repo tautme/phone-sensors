@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>What your phone can do in a browser</title>
+<meta name="description" content="A walk through the sensors hidden inside every smartphone, and what you can build with them in plain HTML — no apps, no installs, no servers.">
+<style>
+  :root {
+    --bg: #fbfbf8;
+    --ink: #1a1a1f;
+    --muted: #6a6a73;
+    --rule: #e5e3dc;
+    --accent: #b3261e;
+    --code-bg: #f0eee6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15151a;
+      --ink: #e8e6df;
+      --muted: #8e8e98;
+      --rule: #2a2a32;
+      --accent: #ff7a6e;
+      --code-bg: #1f1f26;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--ink); }
+  body {
+    font: 17px/1.55 ui-serif, Georgia, "Times New Roman", serif;
+    max-width: 680px; margin: 0 auto; padding: 2rem 1.2rem 4rem;
+  }
+  h1 { font: 700 2.1rem/1.15 ui-sans-serif, system-ui, sans-serif;
+       margin: 0 0 .3rem; letter-spacing: -0.015em; }
+  h2 { font: 600 1.3rem/1.2 ui-sans-serif, system-ui, sans-serif;
+       margin: 2.2rem 0 .5rem; letter-spacing: -0.01em; }
+  h3 { font: 600 1rem/1.3 ui-sans-serif, system-ui, sans-serif;
+       margin: 1.2rem 0 .3rem; }
+  .lead { color: var(--muted); font-size: 1.05rem; margin: 0 0 2rem; }
+  .byline { color: var(--muted); font-size: .85rem; margin: 0 0 2rem;
+            font-family: ui-sans-serif, system-ui, sans-serif; }
+  hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
+  a { color: inherit; text-decoration: underline; text-decoration-color: var(--accent);
+      text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
+  a:hover { background: var(--accent); color: var(--bg); text-decoration: none; }
+  code { font: .9em ui-monospace, monospace; background: var(--code-bg);
+         padding: 1px 5px; border-radius: 3px; }
+  pre { background: var(--code-bg); padding: .8rem 1rem; border-radius: 4px;
+        overflow-x: auto; font: .82rem/1.45 ui-monospace, monospace; }
+  blockquote { border-left: 3px solid var(--accent); padding: .2rem 0 .2rem 1rem;
+               margin: 1rem 0; color: var(--muted); font-style: italic; }
+  .demos { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+           gap: .6rem; margin: 1rem 0; }
+  .demo {
+    display: block; padding: .7rem .9rem;
+    border: 1px solid var(--rule); border-radius: 4px;
+    text-decoration: none; font-family: ui-sans-serif, system-ui, sans-serif;
+    color: var(--ink); font-size: .9rem;
+  }
+  .demo:hover { border-color: var(--accent); background: transparent; color: var(--ink); }
+  .demo strong { display: block; font-size: .95rem; margin-bottom: .15rem; }
+  .demo span { color: var(--muted); font-size: .8rem; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem;
+          font-family: ui-sans-serif, system-ui, sans-serif; margin: .8rem 0; }
+  th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid var(--rule); }
+  th { font-weight: 600; }
+  td.yes { color: #16a34a; }
+  td.no  { color: var(--accent); }
+  td.maybe { color: #d4a017; }
+  .note { background: var(--code-bg); padding: .7rem 1rem; border-radius: 4px;
+          font-size: .92rem; }
+  ul li { margin: .25rem 0; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule);
+           color: var(--muted); font-size: .85rem;
+           font-family: ui-sans-serif, system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<h1>What your phone can do in a browser</h1>
+<p class="lead">A walk through the sensors hidden inside every smartphone, and what you can build with them in plain HTML — no apps, no installs, no servers.</p>
+
+<p>Your phone is dense with sensors. Cameras and microphones, of course, but also accelerometers, gyroscopes, magnetometers, ambient light sensors, GPS, Bluetooth radios. Most of them are accessible from a web page — a single HTML file, no app store involved. I built a series of small demos to see how far you can get with just <code>&lt;canvas&gt;</code>, the Web APIs, and a couple hundred lines of JavaScript each.</p>
+
+<p>Each demo is one self-contained file. Open it on your phone over HTTPS, grant the permission it asks for, watch the sensor become a thing you can see, hear, or play with.</p>
+
+<h2>The demos</h2>
+
+<div class="demos">
+  <a class="demo" href="morse-listener.html"><strong>Morse Listener</strong><span>microphone → text</span></a>
+  <a class="demo" href="morse-vision.html"><strong>Morse Vision</strong><span>camera → text from flashing light</span></a>
+  <a class="demo" href="object-vision.html"><strong>Object Vision</strong><span>camera + ML → object names</span></a>
+  <a class="demo" href="count-vision.html"><strong>Count Vision</strong><span>object detection with tally</span></a>
+  <a class="demo" href="inertial-etch.html"><strong>Inertial Etch</strong><span>tilt → drawing</span></a>
+  <a class="demo" href="inertial-blueprint.html"><strong>Inertial Blueprint</strong><span>compass + steps → room map</span></a>
+  <a class="demo" href="magnetometer-waterfall.html"><strong>Magnetometer Waterfall</strong><span>magnetic field → spectrogram</span></a>
+  <a class="demo" href="bluetooth-reader.html"><strong>Bluetooth Reader</strong><span>BLE → live sensor data</span></a>
+  <a class="demo" href="connection-health.html"><strong>Connection Health</strong><span>network → RTT + speed graphs</span></a>
+  <a class="demo" href="sensor-etch.html"><strong>Sensor Etch</strong><span>everything at once → painting + music</span></a>
+</div>
+
+<hr>
+
+<h2>The first surprise: the microphone is just a number</h2>
+
+<p>The microphone gives you a stream of floating-point samples between -1 and 1, sixty thousand of them per second. That's it. Everything you do with audio — voice recognition, music, transcription — is something built on top of those numbers.</p>
+
+<p>The first demo, <a href="morse-listener.html"><strong>Morse Listener</strong></a>, listens for tones and decodes them. The whole pipeline is: read RMS volume of the audio buffer; if it's above a threshold, you're hearing a tone; if it lasts a short time, that's a dot; longer, a dash; pauses become letter and word breaks.</p>
+
+<p>The fiddly part isn't the audio API. It's that real Morse practice files (like the ones from ARRL) use Farnsworth timing — the dots are sent fast but the gaps are stretched, to give beginners more time to think. A naive decoder treats the long gaps as word breaks and produces garbage. The fix is to detect timing adaptively: take the shortest pulse you've seen as your "dot" reference, and let everything else key off it.</p>
+
+<h2>The camera is also just a number, sort of</h2>
+
+<p>You can grab a frame from <code>&lt;video&gt;</code> into a canvas and read individual pixel values. <a href="morse-vision.html"><strong>Morse Vision</strong></a> uses this to read Morse code from a flashing light: tap a small region of the frame, sample its brightness, and feed those samples through the same decoder as the audio version.</p>
+
+<p>The hard problem here was thresholding. A flashlight against a dark wall has wildly different brightness levels than a phone screen against a bright room. So instead of a fixed threshold, the page tracks recent brightness percentiles: 10th and 90th. The threshold sits at the midpoint between them. The "on" level adjusts to whatever you're pointing at.</p>
+
+<p>For richer scene understanding, <a href="object-vision.html"><strong>Object Vision</strong></a> loads <a href="https://github.com/tensorflow/tfjs-models/tree/master/coco-ssd">COCO-SSD</a> via TensorFlow.js — about a 5 MB MobileNet that recognizes 80 common COCO classes. It runs three times a second on a phone via WebGL. Drawing labeled boxes on a transparent overlay canvas synced to the video gives you what feels like augmented reality, in a single HTML file. <a href="count-vision.html"><strong>Count Vision</strong></a> adds a tally that increments only when an object newly appears, so a stationary chair doesn't run the count to a million.</p>
+
+<h2>The accelerometer + gyroscope are kind of magic</h2>
+
+<p>The phone's IMU returns three numbers for orientation (roll, pitch, yaw) and three for acceleration in each axis, at about 60 Hz. <a href="inertial-etch.html"><strong>Inertial Etch</strong></a> turns this into an Etch-A-Sketch: tilt the phone like a tray and a pen moves across the canvas, with velocity proportional to tilt angle.</p>
+
+<p>The catch with sensor APIs on iOS is that they require permission via a single user gesture, and the permission API is different from the standard Web API. So you call <code>DeviceOrientationEvent.requestPermission()</code> if it exists, fall back to just attaching the listener if it doesn't. iOS also reports orientation differently in landscape mode, so portrait-only is the simplest constraint to design for.</p>
+
+<p>If you can detect a step from acceleration peaks (which you can, with hysteresis and a refractory period), and you have compass heading, you can do <strong>pedestrian dead reckoning</strong>: estimate position by integrating step direction over time. <a href="inertial-blueprint.html"><strong>Inertial Blueprint</strong></a> uses this to map a room. Stand at a corner, drop a marker, walk to the next corner, drop another. The result is a floor plan drawn in browser SVG. It drifts — usually 10-20% over a single room — but it works in a building with no GPS and no external reference. A web page mapping a room with no app installed felt like the kind of thing that shouldn't be possible.</p>
+
+<h2>The magnetometer turns your phone into an instrument</h2>
+
+<p>The magnetometer reports the local magnetic field in microteslas, three axes, about 60 Hz. Earth's field is 25-65 μT depending on latitude. That's the baseline. Anything that perturbs it — a magnet, a motor, a piece of steel rebar — shows up as an oscillation on top.</p>
+
+<p><a href="magnetometer-waterfall.html"><strong>Magnetometer Waterfall</strong></a> takes a sliding 128-sample FFT of the total field magnitude (DC removed, Hann windowed) and renders it as a spectrogram. Walking past a fridge produces a slow ramp. A spinning hard drive makes a horizontal line at the rotor frequency. Waving a magnet shows up as a streak. The phone is doing real signal processing on physical-world data, in the browser, with no library.</p>
+
+<h2>What you can't do, and why</h2>
+
+<p>The list of "phone has it but the web can't reach it" is instructive — every gap is a deliberate decision about privacy.</p>
+
+<table>
+<thead><tr><th>Sensor</th><th>Web access?</th><th>Why not</th></tr></thead>
+<tbody>
+<tr><td>WiFi scan list</td><td class="no">No</td><td>Strong location fingerprint</td></tr>
+<tr><td>Cell tower / signal strength</td><td class="no">No</td><td>Even more precise location</td></tr>
+<tr><td>Barometer (pressure)</td><td class="no">No</td><td>No API exposes it, somehow</td></tr>
+<tr><td>Heart rate / SpO2</td><td class="no">No</td><td>Health data, native only</td></tr>
+<tr><td>LiDAR depth (iPhone Pro)</td><td class="no">No</td><td>Not exposed</td></tr>
+<tr><td>Fingerprint / Face ID</td><td class="maybe">Auth only</td><td>WebAuthn, no raw biometrics</td></tr>
+<tr><td>Bluetooth Low Energy</td><td class="yes">Yes (not iOS)</td><td>One device at a time, via chooser</td></tr>
+<tr><td>Magnetometer raw</td><td class="yes">Yes (Chrome)</td><td>Behind permission prompt</td></tr>
+<tr><td>GPS</td><td class="yes">Yes</td><td>Standard <code>geolocation</code> API</td></tr>
+<tr><td>Camera / Mic</td><td class="yes">Yes</td><td>Per-origin permission</td></tr>
+</tbody>
+</table>
+
+<p><a href="bluetooth-reader.html"><strong>Bluetooth Reader</strong></a> is the most "I can't believe this works in a browser" demo. Tap connect, the browser shows a system chooser of nearby BLE devices, you pick one, and the page walks its GATT service tree, reads characteristics, and subscribes to notifications. With a fitness band you get live heart rate. With a Govee thermometer puck you get temperature and humidity. With an ESP32 you get whatever you advertised. iOS Safari refuses to support it, citing security; on Android Chrome it's been stable for years.</p>
+
+<p>The web doesn't expose WiFi or cell signal, and that's not a bug. <a href="connection-health.html"><strong>Connection Health</strong></a> is the legit substitute: it pings a Cloudflare endpoint every few seconds, runs periodic speed tests, charts RTT and download speed over time, and exports the data. You can't read your radio, but you can measure the actual experience your radio produces. Catches flaky WiFi just as well as native tools, with the bonus that it's a URL you can send anyone.</p>
+
+<h2>The thing about combining them</h2>
+
+<p>Once you have all the sensors hooked up, it's tempting to use them all at once. <a href="sensor-etch.html"><strong>Sensor Etch</strong></a> is the "everything painting" version of the Etch-A-Sketch: tilt moves the pen; mic volume sets the brush size; the camera's average color becomes the ink color; download speed tints the background; and the accelerometer triggers percussion sounds while pen position drives a synthesized violin tone, snapped to a pentatonic scale. Walking around with the phone produces a painting with a soundtrack composed by the room you're in.</p>
+
+<p>That sounds gimmicky written down, and maybe it is. But the experience of standing in a kitchen, painting a yellow stripe because the camera saw a banana, while the violin pitches up because you tilted the phone, while drum hits land in time with your footsteps — that's something that genuinely couldn't exist five years ago, and it's a 30 KB HTML file.</p>
+
+<h2>Is it safe to share these?</h2>
+
+<p>Yes. Each page runs entirely in the recipient's browser. There's no server logging. Camera and microphone permissions are granted per-origin (per-domain) by the user via a system dialog, and browsers show indicator icons whenever they're active. The pages are open source — anyone can read all the code with <code>view-source:</code> in front of the URL.</p>
+
+<p>The only practical caution: host them on a clean static site (GitHub Pages, Netlify, Cloudflare Pages) rather than on a domain that also serves third-party scripts you don't control, since those scripts would inherit the same-origin permissions. For typical personal-site hosting: nothing to worry about.</p>
+
+<h2>The takeaway</h2>
+
+<p>For most of computing's history, doing something interesting with a sensor required an app, an SDK, app store review, signing, distribution. Now most of it requires an HTML file you can email someone. The browser team-by-team did the hard work — making sensors reachable, making permissions clear, making the boundaries of what a page can do legible — and the result is a development environment that is, for a surprising amount of physical-world tinkering, the best one we have.</p>
+
+<p>None of these demos are products. They're sketches. The point is that the things you'd need to write a serious app for in 2015 — object detection, room mapping, BLE scanning, real-time audio analysis — now fit in a single file you can debug in DevTools.</p>
+
+<blockquote>The web platform got really good while no one was looking.</blockquote>
+
+<p>If you build something with these or fork the demos, I'd love to see it.</p>
+
+<hr>
+
+<h3>Code</h3>
+<p>All ten demos are single HTML files. <a href="#">[your repo link]</a>. MIT licensed. Each file is self-contained — no build step, no bundler, no framework. Open in a browser, read the source, change a line, refresh.</p>
+
+<h3>Running them locally</h3>
+<pre>git clone &lt;repo&gt;
+cd phone-sensors
+python3 -m http.server
+# open http://localhost:8000 on your phone (same WiFi)</pre>
+<p>Sensor APIs require <code>https://</code> or <code>localhost</code>. For phone access over local network use a tool like <code>ngrok</code> or just deploy to GitHub Pages — it's free and HTTPS by default.</p>
+
+<footer>
+  <p>Built with Claude. Free to share, modify, fork. No analytics on this page.</p>
+</footer>
+
+</body>
+</html>

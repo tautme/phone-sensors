@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inertial Blueprint</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 1.2rem auto;
+         padding: 0 1rem; line-height: 1.4; background: #f4f4f0; color: #222; }
+  h1 { font-size: 1.4rem; margin: 0 0 .8rem; }
+  .row { display: flex; gap: .5rem; align-items: center; margin: .4rem 0; flex-wrap: wrap; }
+  button { padding: .5rem .9rem; font-size: .95rem; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.primary { background: #0a3a6e; color: #fff; border: 0; border-radius: 4px; }
+  button.danger { background: #b3261e; color: #fff; border: 0; border-radius: 4px; }
+  #canvasWrap {
+    width: 100%; aspect-ratio: 1 / 1; max-width: 600px;
+    border: 2px solid #0a3a6e; border-radius: 4px; overflow: hidden;
+    background: #0a3a6e;
+  }
+  canvas { width: 100%; height: 100%; display: block; }
+  #status, #readout {
+    font-family: monospace; font-size: .85rem; white-space: pre;
+    border: 1px solid #8884; padding: .45rem .65rem; border-radius: 4px;
+    margin: 0; background: #fff;
+  }
+  small { color: #666; }
+  label { display: inline-flex; align-items: center; gap: .35rem; font-size: .9rem; }
+  input[type=number] { width: 4.5rem; padding: .25rem; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: .75rem; background: #ddd; }
+  .pill.on { background: #2ea043; color: #fff; }
+</style>
+</head>
+<body>
+
+<h1>Inertial Blueprint</h1>
+
+<div class="row">
+  <button id="enable" class="primary">Enable sensors</button>
+  <button id="reset" disabled>Reset origin</button>
+  <span id="sensorState" class="pill">off</span>
+</div>
+
+<div class="row">
+  <button id="drop" disabled>Drop corner</button>
+  <button id="endSeg" disabled>End wall</button>
+  <button id="clear" class="danger" disabled>Clear map</button>
+</div>
+
+<div class="row">
+  <label>step length (m) <input id="stepLen" type="number" min="0.4" max="1.0" step="0.05" value="0.7"></label>
+  <label>threshold <input id="thr" type="number" min="0.5" max="3" step="0.1" value="1.2"></label>
+</div>
+
+<div id="canvasWrap"><canvas id="map"></canvas></div>
+
+<pre id="readout">heading:  —
+position:  x —  y —
+steps:    0
+walls:    0 segments</pre>
+
+<div class="row">
+  <button id="dlJson" disabled>Download JSON</button>
+  <button id="dlSvg" disabled>Download SVG</button>
+</div>
+
+<p><small>Stand at a corner, tap <b>Enable sensors</b> + <b>Reset origin</b>, walk along a wall, tap <b>Drop corner</b> at the next corner. Repeat. <b>End wall</b> to lift the pen and start a new chain. Compass needs <code>https://</code> + iOS permission. Accuracy is rough — drift accumulates over distance.</small></p>
+
+<script>
+const $ = id => document.getElementById(id);
+const canvas = $('map'), ctx = canvas.getContext('2d');
+
+// --- state ---
+let running = false;
+let posX = 0, posY = 0;             // meters, +x = east, +y = north
+let stepCount = 0;
+let heading = 0;                    // 0 = north, clockwise, degrees
+let headingSource = 'none';
+let stepLength = 0.7;
+let stepThreshold = 1.2;            // m/s² above gravity-corrected smoothed magnitude
+let trail = [];                     // path of step endpoints
+let walls = [];                     // array of arrays of points (chains)
+let currentChain = null;            // active chain or null
+const startedAt = new Date();
+
+// --- step detector state ---
+let smoothMag = 0;
+const SMOOTH_A = 0.25;
+let stepState = 'wait';             // 'wait' | 'rising'
+let peakVal = 0;
+let lastStepT = 0;
+const MIN_STEP_INTERVAL_MS = 280;
+
+// --- UI handlers ---
+$('stepLen').oninput = e => stepLength = +e.target.value || 0.7;
+$('thr').oninput = e => stepThreshold = +e.target.value || 1.2;
+$('enable').onclick = enable;
+$('reset').onclick = resetOrigin;
+$('drop').onclick = dropCorner;
+$('endSeg').onclick = endSegment;
+$('clear').onclick = clearMap;
+$('dlJson').onclick = downloadJson;
+$('dlSvg').onclick = downloadSvg;
+
+function fitCanvas() {
+  const r = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(r.width * dpr);
+  canvas.height = Math.round(r.height * dpr);
+}
+window.addEventListener('resize', () => { fitCanvas(); draw(); });
+
+async function enable() {
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const p = await DeviceOrientationEvent.requestPermission();
+      if (p !== 'granted') return alert('Orientation permission denied.');
+    }
+    if (typeof DeviceMotionEvent !== 'undefined' &&
+        typeof DeviceMotionEvent.requestPermission === 'function') {
+      const p = await DeviceMotionEvent.requestPermission();
+      if (p !== 'granted') return alert('Motion permission denied.');
+    }
+  } catch (e) { return alert('Permission error: ' + e.message); }
+
+  // Prefer absolute (true north) when available; falls back to relative alpha.
+  if ('ondeviceorientationabsolute' in window) {
+    window.addEventListener('deviceorientationabsolute', onOrientation);
+    headingSource = 'absolute';
+  } else {
+    window.addEventListener('deviceorientation', onOrientation);
+    headingSource = 'relative';
+  }
+  window.addEventListener('devicemotion', onMotion);
+
+  fitCanvas();
+  running = true;
+  $('enable').disabled = true;
+  ['reset','drop','endSeg','clear','dlJson','dlSvg'].forEach(id => $(id).disabled = false);
+  $('sensorState').textContent = 'on';
+  $('sensorState').classList.add('on');
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function onOrientation(e) {
+  let h;
+  if (typeof e.webkitCompassHeading === 'number') {
+    h = e.webkitCompassHeading;          // iOS: direct compass bearing
+    headingSource = 'iOS compass';
+  } else if (typeof e.alpha === 'number') {
+    // alpha rotates counterclockwise from device-up-toward-magnetic-north when looking down
+    h = (360 - e.alpha) % 360;
+  }
+  if (typeof h === 'number') heading = h;
+}
+
+function onMotion(e) {
+  const a = e.accelerationIncludingGravity;
+  if (!a) return;
+  const mag = Math.hypot(a.x || 0, a.y || 0, a.z || 0);
+  const corrected = Math.abs(mag - 9.81);  // shake amount
+  smoothMag = SMOOTH_A * corrected + (1 - SMOOTH_A) * smoothMag;
+  detectStep(smoothMag, performance.now());
+}
+
+// Peak-detection step counter with hysteresis + minimum interval.
+function detectStep(v, t) {
+  if (stepState === 'wait') {
+    if (v > stepThreshold) { stepState = 'rising'; peakVal = v; }
+  } else if (stepState === 'rising') {
+    if (v > peakVal) peakVal = v;
+    else if (v < stepThreshold * 0.5) {
+      if (t - lastStepT > MIN_STEP_INTERVAL_MS) {
+        lastStepT = t;
+        onStep();
+      }
+      stepState = 'wait';
+    }
+  }
+}
+
+function onStep() {
+  stepCount++;
+  const rad = (90 - heading) * Math.PI / 180;  // compass→math angle
+  posX += Math.cos(rad) * stepLength;
+  posY += Math.sin(rad) * stepLength;
+  trail.push({ x: posX, y: posY });
+  if (currentChain) currentChain.live = { x: posX, y: posY };
+  draw();
+}
+
+function resetOrigin() {
+  posX = 0; posY = 0; stepCount = 0; trail = [];
+  if (currentChain) currentChain.live = { x: 0, y: 0 };
+  draw();
+}
+
+function dropCorner() {
+  if (!currentChain) {
+    currentChain = { points: [{ x: posX, y: posY }] };
+    walls.push(currentChain);
+  } else {
+    currentChain.points.push({ x: posX, y: posY });
+  }
+  draw();
+}
+
+function endSegment() {
+  if (currentChain) {
+    delete currentChain.live;
+    if (currentChain.points.length < 2) walls.pop(); // drop single-point junk
+    currentChain = null;
+    draw();
+  }
+}
+
+function clearMap() {
+  if (!confirm('Clear all walls and reset origin?')) return;
+  walls = []; trail = []; currentChain = null;
+  posX = 0; posY = 0; stepCount = 0;
+  draw();
+}
+
+// --- view fitting ---
+function computeView(W, H) {
+  const pts = [{x: 0, y: 0}, {x: posX, y: posY}, ...trail];
+  for (const w of walls) for (const p of w.points) pts.push(p);
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  let minX = Math.min(...xs), maxX = Math.max(...xs);
+  let minY = Math.min(...ys), maxY = Math.max(...ys);
+  const w = Math.max(maxX - minX, 0), h = Math.max(maxY - minY, 0);
+  const pad = Math.max(2, Math.max(w, h) * 0.2);
+  minX -= pad; maxX += pad; minY -= pad; maxY += pad;
+  const sx = W / (maxX - minX), sy = H / (maxY - minY);
+  const scale = Math.min(sx, sy);
+  const cx = W / 2 - ((minX + maxX) / 2) * scale;
+  const cy = H / 2 + ((minY + maxY) / 2) * scale;
+  return { scale, cx, cy };
+}
+function world(p, v) { return { x: v.cx + p.x * v.scale, y: v.cy - p.y * v.scale }; }
+
+// --- drawing ---
+function draw() {
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = '#0a3a6e'; ctx.fillRect(0, 0, W, H);
+  const v = computeView(W, H);
+
+  // grid (1m squares)
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1;
+  const gMin = -1000, gMax = 1000;
+  for (let i = gMin; i <= gMax; i++) {
+    const a = world({x: i, y: gMin}, v), b = world({x: i, y: gMax}, v);
+    if (a.x < -10 || a.x > W + 10) continue;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  for (let j = gMin; j <= gMax; j++) {
+    const a = world({x: gMin, y: j}, v), b = world({x: gMax, y: j}, v);
+    if (a.y < -10 || a.y > H + 10) continue;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+
+  // origin marker
+  const o = world({x:0,y:0}, v);
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(o.x-8,o.y); ctx.lineTo(o.x+8,o.y);
+  ctx.moveTo(o.x,o.y-8); ctx.lineTo(o.x,o.y+8); ctx.stroke();
+
+  // trail (faint dotted)
+  if (trail.length) {
+    ctx.strokeStyle = 'rgba(170,210,255,0.45)'; ctx.lineWidth = 1; ctx.setLineDash([2,4]);
+    ctx.beginPath();
+    let p0 = world({x:0,y:0}, v); ctx.moveTo(p0.x, p0.y);
+    for (const p of trail) { const q = world(p, v); ctx.lineTo(q.x, q.y); }
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // walls
+  ctx.strokeStyle = '#7ed5e8'; ctx.lineWidth = 2.5;
+  for (const w of walls) {
+    if (!w.points.length) continue;
+    ctx.beginPath();
+    const p0 = world(w.points[0], v); ctx.moveTo(p0.x, p0.y);
+    for (let i = 1; i < w.points.length; i++) { const p = world(w.points[i], v); ctx.lineTo(p.x, p.y); }
+    if (w.live) { const p = world(w.live, v); ctx.lineTo(p.x, p.y); }
+    ctx.stroke();
+    // corner dots
+    ctx.fillStyle = '#fff';
+    for (const pt of w.points) { const p = world(pt, v); ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, 7); ctx.fill(); }
+  }
+
+  // current position + heading arrow
+  const p = world({x: posX, y: posY}, v);
+  ctx.fillStyle = '#ffd23f';
+  ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, 7); ctx.fill();
+  const rad = (90 - heading) * Math.PI / 180;
+  const ax = p.x + Math.cos(rad) * 18, ay = p.y - Math.sin(rad) * 18;
+  ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(ax, ay); ctx.stroke();
+
+  // scale bar (1m)
+  const barLen = v.scale; // 1 meter in pixels
+  const bx = 14, by = H - 18;
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + barLen, by); ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.font = '12px monospace';
+  ctx.fillText('1 m', bx, by - 5);
+
+  $('readout').textContent =
+    `heading:  ${heading.toFixed(1)}° (${headingSource})\n` +
+    `position: x ${posX.toFixed(2)}  y ${posY.toFixed(2)}\n` +
+    `steps:    ${stepCount}\n` +
+    `walls:    ${walls.filter(w => w.points.length >= 2).length} segments`;
+}
+
+function loop() {
+  if (!running) return;
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// --- export ---
+function downloadJson() {
+  const data = {
+    metadata: {
+      app: 'Inertial Blueprint',
+      created: startedAt.toISOString(),
+      stepLength, stepThreshold, headingSource,
+      units: 'meters'
+    },
+    origin: { x: 0, y: 0 },
+    currentPosition: { x: posX, y: posY },
+    stepCount,
+    trail,
+    walls: walls.filter(w => w.points.length >= 2).map(w => w.points)
+  };
+  saveBlob(JSON.stringify(data, null, 2), 'application/json', 'blueprint.json');
+}
+
+function downloadSvg() {
+  const pts = [{x:0,y:0}, {x:posX,y:posY}, ...trail, ...walls.flatMap(w => w.points)];
+  if (!pts.length) return;
+  const xs = pts.map(p=>p.x), ys = pts.map(p=>p.y);
+  let minX = Math.min(...xs), maxX = Math.max(...xs);
+  let minY = Math.min(...ys), maxY = Math.max(...ys);
+  const pad = Math.max(1, Math.max(maxX-minX, maxY-minY) * 0.15);
+  minX -= pad; maxX += pad; minY -= pad; maxY += pad;
+  const scale = 50; // 50 px per meter
+  const W = (maxX - minX) * scale, H = (maxY - minY) * scale;
+  const x = wx => (wx - minX) * scale;
+  const y = wy => H - (wy - minY) * scale;
+
+  let grid = '';
+  for (let i = Math.ceil(minX); i <= Math.floor(maxX); i++)
+    grid += `<line x1="${x(i)}" y1="0" x2="${x(i)}" y2="${H}" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>`;
+  for (let j = Math.ceil(minY); j <= Math.floor(maxY); j++)
+    grid += `<line x1="0" y1="${y(j)}" x2="${W}" y2="${y(j)}" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>`;
+
+  let wallSvg = '';
+  for (const w of walls) {
+    if (w.points.length < 2) continue;
+    const d = w.points.map((p,i) => `${i?'L':'M'}${x(p.x)},${y(p.y)}`).join(' ');
+    wallSvg += `<path d="${d}" stroke="#7ed5e8" stroke-width="3" fill="none"/>`;
+    for (const p of w.points)
+      wallSvg += `<circle cx="${x(p.x)}" cy="${y(p.y)}" r="3" fill="#fff"/>`;
+  }
+  const svg =
+`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+<rect width="100%" height="100%" fill="#0a3a6e"/>
+${grid}
+<line x1="${x(0)-8}" y1="${y(0)}" x2="${x(0)+8}" y2="${y(0)}" stroke="#fff" stroke-width="2"/>
+<line x1="${x(0)}" y1="${y(0)-8}" x2="${x(0)}" y2="${y(0)+8}" stroke="#fff" stroke-width="2"/>
+${wallSvg}
+<text x="10" y="${H-8}" fill="#fff" font-family="monospace" font-size="12">scale: 50px = 1m</text>
+</svg>`;
+  saveBlob(svg, 'image/svg+xml', 'blueprint.svg');
+}
+
+function saveBlob(text, mime, filename) {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// initial render
+fitCanvas(); draw();
+</script>
+</body>
+</html>

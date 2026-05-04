@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Count Vision</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto;
+         padding: 0 1rem; line-height: 1.5; }
+  h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+  .row { display: flex; gap: .6rem; align-items: center; margin: .5rem 0; flex-wrap: wrap; }
+  button { padding: .5rem 1rem; font-size: 1rem; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  #wrap {
+    position: relative;
+    width: 100%; max-width: 480px;
+    aspect-ratio: 4 / 3;
+    margin-bottom: 1rem;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #000;
+  }
+  #video, #overlay {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    display: block;
+  }
+  #video { object-fit: cover; }
+  #overlay { pointer-events: none; }
+  #live { font-family: monospace; font-size: 1.1rem; min-height: 1.6em; }
+  .box {
+    font-family: monospace; font-size: 1rem; white-space: pre-wrap; word-break: break-word;
+    border: 1px solid #8884; padding: .6rem; border-radius: 6px; margin: 0;
+  }
+  #counts { min-height: 4em; max-height: 12em; overflow-y: auto; }
+  #out { min-height: 6em; max-height: 14em; overflow-y: auto; }
+  small { color: #888; }
+</style>
+</head>
+<body>
+
+<h1>Count Vision</h1>
+
+<div class="row">
+  <button id="start" disabled>Loading model…</button>
+  <button id="stop" disabled>Stop</button>
+  <button id="clear">Clear</button>
+  <span id="status"><small>—</small></span>
+</div>
+
+<div id="wrap">
+  <video id="video" muted playsinline></video>
+  <canvas id="overlay"></canvas>
+</div>
+
+<div class="row">
+  <small style="width:6.5em;">Sensitivity</small>
+  <input id="thr" type="range" min="0.1" max="0.9" step="0.05" value="0.4">
+  <small id="thrVal">0.40</small>
+</div>
+<div class="row">
+  <small style="width:6.5em;">Detect rate</small>
+  <input id="rate" type="range" min="100" max="1000" step="50" value="350">
+  <small id="rateVal">350 ms</small>
+</div>
+<div class="row">
+  <small style="width:6.5em;">Re-log after</small>
+  <input id="cool" type="range" min="500" max="10000" step="500" value="3000">
+  <small id="coolVal">3.0 s</small>
+</div>
+
+<div class="row"><small>Currently seeing:</small></div>
+<div id="live">—</div>
+
+<div class="row" style="margin-top:.8rem;"><small>Count:</small></div>
+<pre id="counts" class="box"></pre>
+
+<div class="row" style="margin-top:.8rem;"><small>Log:</small></div>
+<pre id="out" class="box"></pre>
+
+<p><small>Camera only works on <code>https://</code> or <code>localhost</code>.
+Detection model: COCO-SSD (~80 common objects).</small></p>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const video = $('video'), overlay = $('overlay');
+const octx = overlay.getContext('2d');
+
+const params = {
+  minScore: 0.4,
+  detectIntervalMs: 350,
+  relogAfterMs: 3000
+};
+
+let model, stream, running = false;
+let lastDetectTime = 0;
+const lastSeenAt = {};
+const counts = {};
+
+$('clear').onclick = () => {
+  $('out').textContent = '';
+  $('counts').textContent = '';
+  for (const k in lastSeenAt) delete lastSeenAt[k];
+  for (const k in counts) delete counts[k];
+};
+$('start').onclick = start;
+$('stop').onclick = stop;
+
+$('thr').oninput = e => {
+  params.minScore = +e.target.value;
+  $('thrVal').textContent = params.minScore.toFixed(2);
+};
+$('rate').oninput = e => {
+  params.detectIntervalMs = +e.target.value;
+  $('rateVal').textContent = `${params.detectIntervalMs} ms`;
+};
+$('cool').oninput = e => {
+  params.relogAfterMs = +e.target.value;
+  $('coolVal').textContent = `${(params.relogAfterMs / 1000).toFixed(1)} s`;
+};
+
+(async () => {
+  try {
+    $('status').innerHTML = '<small>loading model…</small>';
+    model = await cocoSsd.load();
+    $('start').disabled = false;
+    $('start').textContent = 'Start';
+    $('status').innerHTML = '<small>model ready</small>';
+  } catch (e) {
+    $('status').innerHTML = '<small style="color:#c00">model load failed: ' + e.message + '</small>';
+  }
+})();
+
+async function start() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 640 }, height: { ideal: 480 }
+      },
+      audio: false
+    });
+  } catch (e) { alert('Camera error: ' + e.message); return; }
+  video.srcObject = stream;
+  await video.play();
+  overlay.width = video.videoWidth;
+  overlay.height = video.videoHeight;
+  document.getElementById('wrap').style.aspectRatio =
+    `${video.videoWidth} / ${video.videoHeight}`;
+  running = true;
+  $('start').disabled = true; $('stop').disabled = false;
+  $('status').innerHTML = '<small>detecting</small>';
+  loop();
+}
+
+function stop() {
+  running = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  video.srcObject = null;
+  octx.clearRect(0, 0, overlay.width, overlay.height);
+  $('start').disabled = false; $('stop').disabled = true;
+  $('status').innerHTML = '<small>stopped</small>';
+  $('live').textContent = '—';
+}
+
+async function loop() {
+  if (!running) return;
+  const now = performance.now();
+  if (now - lastDetectTime > params.detectIntervalMs) {
+    lastDetectTime = now;
+    try {
+      const preds = await model.detect(video, 20, params.minScore);
+      drawBoxes(preds);
+      logNew(preds);
+    } catch (e) {}
+  }
+  requestAnimationFrame(loop);
+}
+
+function drawBoxes(preds) {
+  octx.clearRect(0, 0, overlay.width, overlay.height);
+  octx.lineWidth = 2;
+  octx.font = '14px system-ui, sans-serif';
+  for (const p of preds) {
+    const [x, y, w, h] = p.bbox;
+    octx.strokeStyle = '#2ea043';
+    octx.strokeRect(x, y, w, h);
+    const label = `${p.class} ${(p.score * 100).toFixed(0)}%`;
+    const tw = octx.measureText(label).width + 8;
+    octx.fillStyle = 'rgba(46,160,67,0.9)';
+    octx.fillRect(x, Math.max(0, y - 18), tw, 18);
+    octx.fillStyle = 'white';
+    octx.fillText(label, x + 4, Math.max(12, y - 5));
+  }
+}
+
+function logNew(preds) {
+  const now = Date.now();
+  const present = new Set(preds.map(p => p.class));
+  for (const cls of present) {
+    if (!lastSeenAt[cls] || (now - lastSeenAt[cls]) > params.relogAfterMs) {
+      const t = new Date().toLocaleTimeString();
+      const out = $('out');
+      out.textContent += `${t}  ${cls}\n`;
+      out.scrollTop = out.scrollHeight;
+      counts[cls] = (counts[cls] || 0) + 1;
+      renderCounts();
+    }
+    lastSeenAt[cls] = now;
+  }
+  $('live').textContent = present.size ? [...present].join(', ') : '—';
+}
+
+function renderCounts() {
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const maxLabelLen = entries.reduce((m, [k]) => Math.max(m, k.length), 0);
+  $('counts').textContent = entries
+    .map(([k, v]) => `${k.padEnd(maxLabelLen + 2)} ${v}`)
+    .join('\n');
+}
+</script>
+</body>
+</html>

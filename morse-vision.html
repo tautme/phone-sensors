@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Morse Vision</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto;
+         padding: 0 1rem; line-height: 1.5; }
+  h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+  .row { display: flex; gap: .6rem; align-items: center; margin: .5rem 0; flex-wrap: wrap; }
+  button { padding: .5rem 1rem; font-size: 1rem; cursor: pointer; }
+  meter { width: 220px; }
+  #wrap { position: relative; display: inline-block; line-height: 0; }
+  #video { width: 100%; max-width: 480px; height: auto; background: #000; border-radius: 6px; cursor: crosshair; }
+  #target { position: absolute; width: 30px; height: 30px; border: 2px solid #ff3b30;
+            transform: translate(-50%,-50%); pointer-events: none; box-shadow: 0 0 0 1px #fff8; }
+  #symbols { font-family: monospace; font-size: 1.3rem; min-height: 1.6em; letter-spacing: 2px; }
+  #out { font-family: monospace; font-size: 1.05rem; white-space: pre-wrap; word-break: break-word;
+         min-height: 2.5em; border: 1px solid #8884; padding: .6rem; border-radius: 6px; margin: 0; }
+  small { color: #888; }
+</style>
+</head>
+<body>
+
+<h1>Morse Vision</h1>
+
+<div class="row">
+  <button id="start">Start</button>
+  <button id="stop" disabled>Stop</button>
+  <button id="clear">Clear</button>
+</div>
+
+<div id="wrap">
+  <video id="video" muted playsinline></video>
+  <div id="target" style="left:50%; top:50%;"></div>
+</div>
+
+<div class="row">
+  <small>Brightness</small>
+  <meter id="meter" min="0" max="1" value="0"></meter>
+  <span id="dot" style="width:.6rem;height:.6rem;border-radius:50%;background:#ccc;display:inline-block;"></span>
+  <small id="thrInfo">threshold: —</small>
+</div>
+
+<div id="symbols">&nbsp;</div>
+<pre id="out"></pre>
+
+<p><small>Click on the bright/flashing source in the preview to aim the sampler at it.
+Camera only works on <code>https://</code> or <code>localhost</code>.</small></p>
+
+<script>
+const MORSE = {
+  '.-':'A','-...':'B','-.-.':'C','-..':'D','.':'E','..-.':'F','--.':'G','....':'H',
+  '..':'I','.---':'J','-.-':'K','.-..':'L','--':'M','-.':'N','---':'O','.--.':'P',
+  '--.-':'Q','.-.':'R','...':'S','-':'T','..-':'U','...-':'V','.--':'W','-..-':'X',
+  '-.--':'Y','--..':'Z',
+  '-----':'0','.----':'1','..---':'2','...--':'3','....-':'4','.....':'5',
+  '-....':'6','--...':'7','---..':'8','----.':'9',
+  '.-.-.-':'.','--..--':',','..--..':'?','.----.':"'",'-.-.--':'!','-..-.':'/',
+  '-.--.':'(','-.--.-':')','.-...':'&','---...':':','-.-.-.':';','-...-':'=',
+  '.-.-.':'+','-....-':'-','..--.-':'_','.-..-.':'"','...-..-':'$','.--.-.':'@'
+};
+
+const $ = id => document.getElementById(id);
+const video = $('video'), target = $('target');
+const SAMPLE_R = 12; // half-size of sample box in source pixels
+
+let stream, running = false;
+let canvas, cctx;
+let sampleX = 0.5, sampleY = 0.5; // normalized 0..1
+let toneOn = false, tStart = 0;
+let symbols = '', lastSpace = true;
+const pulses = [], gaps = [];
+const recentB = []; // recent brightness samples for auto-threshold
+
+$('clear').onclick = () => { $('out').textContent = ''; symbols = ''; $('symbols').textContent = '\u00a0'; lastSpace = true; };
+$('start').onclick = start;
+$('stop').onclick = stop;
+
+video.addEventListener('click', e => {
+  const r = video.getBoundingClientRect();
+  sampleX = (e.clientX - r.left) / r.width;
+  sampleY = (e.clientY - r.top) / r.height;
+  target.style.left = (sampleX * 100) + '%';
+  target.style.top  = (sampleY * 100) + '%';
+  recentB.length = 0; // reset auto-threshold for new spot
+});
+
+async function start() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 640 }, height: { ideal: 480 }
+      },
+      audio: false
+    });
+  } catch (e) { alert('Camera error: ' + e.message); return; }
+  video.srcObject = stream;
+  await video.play();
+  canvas = document.createElement('canvas');
+  canvas.width = SAMPLE_R * 2; canvas.height = SAMPLE_R * 2;
+  cctx = canvas.getContext('2d', { willReadFrequently: true });
+  pulses.length = 0; gaps.length = 0; recentB.length = 0;
+  toneOn = false; tStart = performance.now();
+  running = true;
+  $('start').disabled = true; $('stop').disabled = false;
+  loop();
+}
+
+function stop() {
+  running = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  video.srcObject = null;
+  $('start').disabled = false; $('stop').disabled = true;
+  $('dot').style.background = '#ccc';
+  flushLetter();
+}
+
+function getBrightness() {
+  const w = video.videoWidth, h = video.videoHeight;
+  if (!w) return 0;
+  const cx = Math.round(sampleX * w), cy = Math.round(sampleY * h);
+  const x = Math.max(0, cx - SAMPLE_R), y = Math.max(0, cy - SAMPLE_R);
+  const sw = Math.min(w - x, SAMPLE_R * 2), sh = Math.min(h - y, SAMPLE_R * 2);
+  cctx.drawImage(video, x, y, sw, sh, 0, 0, sw, sh);
+  const d = cctx.getImageData(0, 0, sw, sh).data;
+  let sum = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    sum += 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+    n++;
+  }
+  return (sum / n) / 255;
+}
+
+// Auto-threshold: midpoint between low and high percentiles of recent brightness.
+function autoThreshold() {
+  if (recentB.length < 30) return null;
+  const sorted = [...recentB].sort((a, b) => a - b);
+  const lo = sorted[Math.floor(sorted.length * 0.10)];
+  const hi = sorted[Math.floor(sorted.length * 0.90)];
+  if (hi - lo < 0.04) return null; // not enough contrast
+  return { thr: (lo + hi) / 2, lo, hi };
+}
+
+function dotUnit() { return pulses.length < 2 ? 80 : Math.min(...pulses); }
+
+function classifyPulse(ms) {
+  if (ms < 20) return null;
+  pulses.push(ms);
+  if (pulses.length > 20) pulses.shift();
+  return ms < dotUnit() * 2 ? '.' : '-';
+}
+
+function isWordGap(ms) {
+  if (gaps.length >= 3) return ms > Math.min(...gaps) * 1.7;
+  return ms > dotUnit() * 5;
+}
+
+function flushLetter() {
+  if (!symbols) return;
+  $('out').textContent += MORSE[symbols] || '?';
+  symbols = ''; $('symbols').textContent = '\u00a0';
+  lastSpace = false;
+}
+
+function addSpace() {
+  if (lastSpace) return;
+  $('out').textContent += ' '; lastSpace = true;
+}
+
+function loop() {
+  if (!running) return;
+  const now = performance.now();
+  const b = getBrightness();
+  recentB.push(b);
+  if (recentB.length > 120) recentB.shift(); // ~2s @ 60fps
+
+  $('meter').value = b;
+
+  const at = autoThreshold();
+  if (!at) {
+    $('thrInfo').textContent = 'threshold: calibrating…';
+    $('dot').style.background = '#ccc';
+    requestAnimationFrame(loop);
+    return;
+  }
+  $('thrInfo').textContent = `threshold: ${at.thr.toFixed(2)} (range ${at.lo.toFixed(2)}–${at.hi.toFixed(2)})`;
+  const on = b > at.thr;
+  $('dot').style.background = on ? '#2ea043' : '#ccc';
+
+  if (on !== toneOn) {
+    const dur = now - tStart;
+    if (toneOn) {
+      const sym = classifyPulse(dur);
+      if (sym) { symbols += sym; $('symbols').textContent = symbols; }
+    } else {
+      if (dur > dotUnit() * 2) {
+        gaps.push(dur);
+        if (gaps.length > 15) gaps.shift();
+      }
+    }
+    toneOn = on; tStart = now;
+  } else if (!toneOn) {
+    const dur = now - tStart;
+    if (symbols && dur > dotUnit() * 2) flushLetter();
+    if (dur > dotUnit() * 5 && isWordGap(dur)) addSpace();
+  }
+
+  requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>

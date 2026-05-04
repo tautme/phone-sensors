@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Magnetometer Waterfall</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 1.2rem auto;
+         padding: 0 1rem; line-height: 1.4; background: #111; color: #eee; }
+  h1 { font-size: 1.4rem; margin: 0 0 .8rem; }
+  h2 { font-size: .95rem; margin: 1rem 0 .3rem; color: #ccc; }
+  .row { display: flex; gap: .5rem; align-items: center; margin: .4rem 0; flex-wrap: wrap; }
+  button { padding: .5rem .9rem; font-size: .95rem; cursor: pointer;
+           background: #333; color: #eee; border: 1px solid #555; border-radius: 4px; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: #0a3a6e; border-color: #0a3a6e; }
+  .pill { padding: 2px 8px; border-radius: 999px; font-size: .75rem; background: #444; }
+  .pill.on { background: #2ea043; }
+  .pill.warn { background: #d4a017; }
+  .pill.err { background: #b3261e; }
+  canvas { display: block; width: 100%; background: #000; border: 1px solid #333; border-radius: 4px; }
+  #waterfall { height: 360px; image-rendering: pixelated; }
+  #strip { height: 140px; }
+  #live { font-family: monospace; font-size: 1rem; white-space: pre;
+          background: #000; border: 1px solid #333; border-radius: 4px; padding: .5rem .7rem; margin: 0; }
+  small { color: #888; }
+  input[type=range] { vertical-align: middle; }
+  .legend { font-family: monospace; font-size: .75rem; color: #aaa; }
+</style>
+</head>
+<body>
+
+<h1>Magnetometer Waterfall</h1>
+
+<div class="row">
+  <button id="enable" class="primary">Enable magnetometer</button>
+  <button id="stop" disabled>Stop</button>
+  <span id="state" class="pill">off</span>
+  <span id="rate" class="pill">— Hz</span>
+</div>
+
+<pre id="live">x   —  μT
+y   —  μT
+z   —  μT
+|B| —  μT</pre>
+
+<h2>Spectrogram (waterfall) — total field, DC removed</h2>
+<canvas id="waterfall"></canvas>
+<div class="row legend">
+  <span>frequency (Hz):</span>
+  <span id="fLabels">0 → —</span>
+  <span style="margin-left:auto">↓ time (newest at top)</span>
+</div>
+
+<div class="row">
+  <label><small>sensitivity</small></label>
+  <input id="gain" type="range" min="0" max="6" step="0.05" value="2">
+  <small id="gainVal">2.00</small>
+  <label style="margin-left:1em"><small>color floor</small></label>
+  <input id="floor" type="range" min="-6" max="0" step="0.1" value="-3">
+  <small id="floorVal">-3.0</small>
+</div>
+
+<h2>Raw components (last ~10 s)</h2>
+<canvas id="strip"></canvas>
+<div class="row legend">
+  <span style="color:#ff6b6b">█</span> X
+  <span style="color:#4ecdc4">█</span> Y
+  <span style="color:#ffe66d">█</span> Z
+  <span style="color:#fff">█</span> |B|
+</div>
+
+<div class="row">
+  <button id="dl" disabled>Download CSV</button>
+  <button id="clear">Clear plots</button>
+  <small id="note"></small>
+</div>
+
+<p><small>Move a magnet, motor, or steel object near the phone to see signatures.
+Requires Chrome with HTTPS or localhost. Sensor field reported in microteslas (μT).
+Earth's field is ~25–65 μT — we subtract the running mean so AC variations dominate the plot.</small></p>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// --- support check ---
+if (!('Magnetometer' in window)) {
+  $('note').innerHTML =
+    '<span style="color:#ff6b6b">Magnetometer API not supported in this browser.</span>';
+  $('enable').disabled = true;
+}
+
+// --- state ---
+const TARGET_HZ = 60;
+const FFT_N = 128;          // power of 2, ~2.1 s window at 60 Hz
+const HOP = 4;              // FFT every N samples (~15 columns/sec)
+const COLS = 600;           // waterfall width in columns
+let sensor = null;
+let samples = [];           // {t, x, y, z, mag}
+let buf = new Float32Array(FFT_N); // recent magnitudes, circular
+let bufHead = 0, bufFilled = 0;
+let sinceFFT = 0;
+let waterfallData; // ImageData; circular column buffer
+let waterfallCol = 0;
+let lastTickT = performance.now();
+let sampleCounter = 0, rateLastT = performance.now();
+let gain = 2, floor = -3;
+let running = false;
+
+// --- UI handlers ---
+$('gain').oninput = e => { gain = +e.target.value; $('gainVal').textContent = gain.toFixed(2); };
+$('floor').oninput = e => { floor = +e.target.value; $('floorVal').textContent = floor.toFixed(1); };
+$('enable').onclick = enable;
+$('stop').onclick = stop;
+$('dl').onclick = downloadCsv;
+$('clear').onclick = () => { samples = []; resetWaterfall(); drawStrip(); };
+
+// --- canvas setup ---
+const wf = $('waterfall'), wctx = wf.getContext('2d');
+const strip = $('strip'), sctx = strip.getContext('2d');
+
+function fitCanvases() {
+  const dpr = 1; // crisp 1:1 pixel mapping for waterfall
+  const rw = wf.getBoundingClientRect();
+  wf.width = COLS;
+  wf.height = FFT_N / 2;
+  wctx.imageSmoothingEnabled = false;
+  resetWaterfall();
+
+  const rs = strip.getBoundingClientRect();
+  strip.width = Math.round(rs.width * (window.devicePixelRatio || 1));
+  strip.height = Math.round(rs.height * (window.devicePixelRatio || 1));
+}
+function resetWaterfall() {
+  wctx.fillStyle = '#000';
+  wctx.fillRect(0, 0, wf.width, wf.height);
+  waterfallData = wctx.getImageData(0, 0, wf.width, wf.height);
+  waterfallCol = 0;
+}
+fitCanvases();
+window.addEventListener('resize', fitCanvases);
+
+// --- enable/disable ---
+async function enable() {
+  try {
+    if (navigator.permissions) {
+      const r = await navigator.permissions.query({ name: 'magnetometer' });
+      if (r.state === 'denied') throw new Error('permission denied');
+    }
+    sensor = new Magnetometer({ frequency: TARGET_HZ, referenceFrame: 'device' });
+    sensor.addEventListener('reading', onReading);
+    sensor.addEventListener('error', e => {
+      setState('error: ' + (e.error?.message || e.message), 'err');
+      stop();
+    });
+    sensor.start();
+    setState('reading', 'on');
+    running = true;
+    $('enable').disabled = true;
+    $('stop').disabled = false;
+    $('dl').disabled = false;
+    requestAnimationFrame(animate);
+  } catch (e) {
+    setState('error: ' + e.message, 'err');
+  }
+}
+function stop() {
+  if (sensor) { try { sensor.stop(); } catch {} sensor = null; }
+  running = false;
+  setState('off');
+  $('enable').disabled = false;
+  $('stop').disabled = true;
+}
+function setState(text, cls='') {
+  $('state').textContent = text;
+  $('state').className = 'pill' + (cls ? ' ' + cls : '');
+}
+
+// --- sensor callback ---
+function onReading() {
+  const t = performance.now();
+  const x = sensor.x, y = sensor.y, z = sensor.z;
+  const mag = Math.hypot(x, y, z);
+  samples.push({ t, x, y, z, mag });
+  if (samples.length > 4000) samples.splice(0, samples.length - 4000);
+
+  // circular buffer for FFT
+  buf[bufHead] = mag;
+  bufHead = (bufHead + 1) % FFT_N;
+  if (bufFilled < FFT_N) bufFilled++;
+
+  // sample rate counter
+  sampleCounter++;
+  if (t - rateLastT > 1000) {
+    const hz = sampleCounter * 1000 / (t - rateLastT);
+    $('rate').textContent = hz.toFixed(1) + ' Hz';
+    sampleCounter = 0; rateLastT = t;
+  }
+
+  // FFT every HOP samples
+  sinceFFT++;
+  if (sinceFFT >= HOP && bufFilled === FFT_N) {
+    sinceFFT = 0;
+    pushFFTColumn();
+  }
+}
+
+// --- render loop ---
+function animate() {
+  if (!running) return;
+  drawWaterfall();
+  drawStrip();
+  drawLive();
+  requestAnimationFrame(animate);
+}
+
+function drawLive() {
+  if (!samples.length) return;
+  const s = samples[samples.length - 1];
+  $('live').textContent =
+    `x   ${pad(s.x)} μT\n` +
+    `y   ${pad(s.y)} μT\n` +
+    `z   ${pad(s.z)} μT\n` +
+    `|B| ${pad(s.mag)} μT`;
+}
+function pad(v) { return (v >= 0 ? ' ' : '') + v.toFixed(2).padStart(6); }
+
+// --- FFT (radix-2, in-place) ---
+function fft(re, im) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = -2 * Math.PI / len;
+    const wlre = Math.cos(ang), wlim = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let wre = 1, wim = 0;
+      for (let j2 = 0; j2 < len / 2; j2++) {
+        const ure = re[i+j2], uim = im[i+j2];
+        const vre = re[i+j2+len/2] * wre - im[i+j2+len/2] * wim;
+        const vim = re[i+j2+len/2] * wim + im[i+j2+len/2] * wre;
+        re[i+j2] = ure + vre; im[i+j2] = uim + vim;
+        re[i+j2+len/2] = ure - vre; im[i+j2+len/2] = uim - vim;
+        const nwre = wre * wlre - wim * wlim;
+        wim = wre * wlim + wim * wlre;
+        wre = nwre;
+      }
+    }
+  }
+}
+
+// --- compute one FFT column and stamp it onto the waterfall ---
+const reBuf = new Float32Array(FFT_N), imBuf = new Float32Array(FFT_N);
+function pushFFTColumn() {
+  // copy circular buffer in chronological order, subtract mean (remove Earth field DC)
+  let sum = 0;
+  for (let i = 0; i < FFT_N; i++) {
+    const v = buf[(bufHead + i) % FFT_N];
+    reBuf[i] = v; sum += v;
+  }
+  const mean = sum / FFT_N;
+  for (let i = 0; i < FFT_N; i++) {
+    // Hann window + DC remove
+    const w = 0.5 * (1 - Math.cos(2 * Math.PI * i / (FFT_N - 1)));
+    reBuf[i] = (reBuf[i] - mean) * w;
+    imBuf[i] = 0;
+  }
+  fft(reBuf, imBuf);
+
+  // map magnitudes to ImageData column
+  const colIdx = waterfallCol;
+  for (let k = 0; k < FFT_N / 2; k++) {
+    const m = Math.hypot(reBuf[k], imBuf[k]);
+    // dB-ish scale, then gain + floor, clamp 0..1
+    const dB = Math.log10(m + 1e-6);
+    let v = (dB - floor) / gain;
+    v = Math.max(0, Math.min(1, v));
+    const [r, g, b] = jet(v);
+    // y axis: low freq at bottom (large y), high freq at top (small y)
+    const yPix = (FFT_N / 2 - 1) - k;
+    const idx = (yPix * wf.width + colIdx) * 4;
+    waterfallData.data[idx] = r;
+    waterfallData.data[idx+1] = g;
+    waterfallData.data[idx+2] = b;
+    waterfallData.data[idx+3] = 255;
+  }
+  waterfallCol = (waterfallCol + 1) % wf.width;
+
+  // update freq label
+  const fs = TARGET_HZ;
+  $('fLabels').textContent = `0 → ${(fs/2).toFixed(1)}`;
+}
+
+// --- draw the waterfall: ImageData is a circular column buffer; render with split blit ---
+function drawWaterfall() {
+  // We want newest column on the right. Copy ImageData to canvas in two halves.
+  // But we want "newest at top" per the legend. Easiest: draw horizontal scroll right→left,
+  // then transpose at display time by rotating? Simpler: keep horizontal scroll.
+  // To match label "↓ time", we put time on Y. So we'll rotate at draw.
+  // Simpler approach: redraw entire ImageData into a temp, then drawImage rotated 90°.
+  // For perf, stamp directly: build a contiguous image, then drawImage rotated.
+  const w = wf.width, h = wf.height;
+  // Stamp circular buffer into ImageData2 in chronological order
+  const tmp = wctx.createImageData(w, h);
+  for (let x = 0; x < w; x++) {
+    const src = (waterfallCol + x) % w;
+    for (let y = 0; y < h; y++) {
+      const sIdx = (y * w + src) * 4;
+      const dIdx = (y * w + x) * 4;
+      tmp.data[dIdx]   = waterfallData.data[sIdx];
+      tmp.data[dIdx+1] = waterfallData.data[sIdx+1];
+      tmp.data[dIdx+2] = waterfallData.data[sIdx+2];
+      tmp.data[dIdx+3] = 255;
+    }
+  }
+  wctx.putImageData(tmp, 0, 0);
+}
+
+// --- jet-ish color map ---
+function jet(v) {
+  v = Math.max(0, Math.min(1, v));
+  const r = Math.round(255 * Math.min(1, Math.max(0, 1.5 - Math.abs(4*v - 3))));
+  const g = Math.round(255 * Math.min(1, Math.max(0, 1.5 - Math.abs(4*v - 2))));
+  const b = Math.round(255 * Math.min(1, Math.max(0, 1.5 - Math.abs(4*v - 1))));
+  return [r, g, b];
+}
+
+// --- strip chart (raw X/Y/Z over last 10 s) ---
+function drawStrip() {
+  const W = strip.width, H = strip.height;
+  sctx.fillStyle = '#000'; sctx.fillRect(0, 0, W, H);
+  // grid
+  sctx.strokeStyle = '#222'; sctx.lineWidth = 1;
+  for (let i = 1; i < 4; i++) {
+    sctx.beginPath();
+    const y = (H * i) / 4;
+    sctx.moveTo(0, y); sctx.lineTo(W, y); sctx.stroke();
+  }
+
+  if (samples.length < 2) return;
+  const tEnd = samples[samples.length - 1].t;
+  const tStart = tEnd - 10000;
+  const recent = samples.filter(s => s.t >= tStart);
+  if (recent.length < 2) return;
+
+  // auto-range across all components
+  let lo = Infinity, hi = -Infinity;
+  for (const s of recent) {
+    lo = Math.min(lo, s.x, s.y, s.z, s.mag);
+    hi = Math.max(hi, s.x, s.y, s.z, s.mag);
+  }
+  if (hi - lo < 1) { const m = (hi + lo) / 2; lo = m - 0.5; hi = m + 0.5; }
+
+  const xOf = t => ((t - tStart) / 10000) * W;
+  const yOf = v => H - ((v - lo) / (hi - lo)) * H;
+
+  const drawLine = (key, color) => {
+    sctx.strokeStyle = color; sctx.lineWidth = 1.4;
+    sctx.beginPath();
+    sctx.moveTo(xOf(recent[0].t), yOf(recent[0][key]));
+    for (let i = 1; i < recent.length; i++) sctx.lineTo(xOf(recent[i].t), yOf(recent[i][key]));
+    sctx.stroke();
+  };
+  drawLine('x', '#ff6b6b');
+  drawLine('y', '#4ecdc4');
+  drawLine('z', '#ffe66d');
+  drawLine('mag', '#ffffff');
+
+  // axis labels
+  sctx.fillStyle = '#888'; sctx.font = (10 * (window.devicePixelRatio||1)) + 'px monospace';
+  sctx.fillText(hi.toFixed(1) + ' μT', 4, 12);
+  sctx.fillText(lo.toFixed(1) + ' μT', 4, H - 4);
+}
+
+// --- export ---
+function downloadCsv() {
+  const rows = [['time_iso','t_ms','x_uT','y_uT','z_uT','mag_uT']];
+  const t0 = performance.timeOrigin;
+  for (const s of samples) {
+    const iso = new Date(t0 + s.t).toISOString();
+    rows.push([iso, s.t.toFixed(3), s.x.toFixed(4), s.y.toFixed(4), s.z.toFixed(4), s.mag.toFixed(4)]);
+  }
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'magnetometer.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+</script>
+</body>
+</html>

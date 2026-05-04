@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bluetooth Sensor Reader</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 1.5rem auto;
+         padding: 0 1rem; line-height: 1.45; }
+  h1 { font-size: 1.4rem; margin: 0 0 .8rem; }
+  h2 { font-size: 1rem; margin: 1rem 0 .4rem; }
+  .row { display: flex; gap: .5rem; align-items: center; margin: .4rem 0; flex-wrap: wrap; }
+  button { padding: .5rem .9rem; font-size: .95rem; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .pill { padding: 2px 8px; border-radius: 999px; font-size: .75rem; background: #ddd; }
+  .pill.on { background: #2ea043; color: #fff; }
+  .pill.warn { background: #d4a017; color: #fff; }
+  .panel {
+    border: 1px solid #8884; border-radius: 6px; padding: .6rem .8rem;
+    background: #8881; margin: .5rem 0;
+  }
+  #log, #live {
+    font-family: monospace; font-size: .85rem; white-space: pre-wrap;
+    word-break: break-word; margin: 0;
+  }
+  #log { max-height: 14em; overflow-y: auto; }
+  #live { font-size: 1rem; }
+  .svc { margin: .4rem 0; padding-left: .8rem; border-left: 3px solid #2ea04340; }
+  .ch { font-family: monospace; font-size: .85rem; margin: .15rem 0; }
+  .ch .name { color: #0a3a6e; font-weight: 600; }
+  small { color: #888; }
+  .err { color: #b00; }
+</style>
+</head>
+<body>
+
+<h1>Bluetooth Sensor Reader</h1>
+
+<div class="row">
+  <button id="connect">Connect device</button>
+  <button id="disconnect" disabled>Disconnect</button>
+  <span id="state" class="pill">disconnected</span>
+</div>
+
+<div class="row">
+  <small id="support"></small>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">Live values</h2>
+  <pre id="live">—</pre>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">Services & characteristics</h2>
+  <div id="services"><small>connect a device to inspect its GATT tree</small></div>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">Log</h2>
+  <pre id="log"></pre>
+  <div class="row">
+    <button id="clearLog">Clear log</button>
+    <button id="dlJson" disabled>Download JSON</button>
+    <button id="dlCsv" disabled>Download CSV</button>
+  </div>
+</div>
+
+<p><small>Web Bluetooth requires <code>https://</code> or <code>localhost</code>, Chrome/Edge desktop or Chrome Android. Not supported on iOS.
+Tip: enable <code>chrome://flags/#enable-experimental-web-platform-features</code> for experimental scan APIs.</small></p>
+
+<script>
+// ----- Standard GATT names (tiny subset, enough for common sensors) -----
+const SERVICES = {
+  '00001800-0000-1000-8000-00805f9b34fb': 'Generic Access',
+  '00001801-0000-1000-8000-00805f9b34fb': 'Generic Attribute',
+  '0000180a-0000-1000-8000-00805f9b34fb': 'Device Information',
+  '0000180d-0000-1000-8000-00805f9b34fb': 'Heart Rate',
+  '0000180f-0000-1000-8000-00805f9b34fb': 'Battery',
+  '00001809-0000-1000-8000-00805f9b34fb': 'Health Thermometer',
+  '0000181a-0000-1000-8000-00805f9b34fb': 'Environmental Sensing',
+  '00001816-0000-1000-8000-00805f9b34fb': 'Cycling Speed and Cadence',
+  '00001818-0000-1000-8000-00805f9b34fb': 'Cycling Power',
+  '0000181d-0000-1000-8000-00805f9b34fb': 'Weight Scale',
+  '0000181c-0000-1000-8000-00805f9b34fb': 'User Data',
+  '00001826-0000-1000-8000-00805f9b34fb': 'Fitness Machine'
+};
+const CHARS = {
+  '00002a00': 'Device Name',
+  '00002a19': 'Battery Level',
+  '00002a29': 'Manufacturer Name',
+  '00002a24': 'Model Number',
+  '00002a25': 'Serial Number',
+  '00002a26': 'Firmware Revision',
+  '00002a27': 'Hardware Revision',
+  '00002a28': 'Software Revision',
+  '00002a37': 'Heart Rate Measurement',
+  '00002a38': 'Body Sensor Location',
+  '00002a6d': 'Pressure',
+  '00002a6e': 'Temperature',
+  '00002a6f': 'Humidity',
+  '00002a1c': 'Temperature Measurement',
+  '00002a5b': 'CSC Measurement',
+  '00002a63': 'Cycling Power Measurement',
+  '00002a9d': 'Weight Measurement'
+};
+const shortUuid = u => u.slice(0, 8);
+const svcName = u => SERVICES[u.toLowerCase()] || `Unknown (${shortUuid(u)})`;
+const chName  = u => CHARS[shortUuid(u.toLowerCase())] || `Unknown (${shortUuid(u)})`;
+
+// ----- DOM helpers -----
+const $ = id => document.getElementById(id);
+const log = (msg, cls='') => {
+  const t = new Date().toLocaleTimeString();
+  const line = `[${t}] ${msg}\n`;
+  const el = $('log');
+  const span = cls ? `<span class="${cls}">${line}</span>` : line;
+  el.innerHTML += span;
+  el.scrollTop = el.scrollHeight;
+  logEntries.push({ time: new Date().toISOString(), msg });
+};
+
+// ----- Support detection -----
+if (!('bluetooth' in navigator)) {
+  $('support').innerHTML = '<span class="err">Web Bluetooth not supported in this browser.</span>';
+  $('connect').disabled = true;
+} else {
+  $('support').textContent = 'Web Bluetooth available.';
+}
+
+// ----- State -----
+let device, server;
+let liveValues = {}; // characteristic UUID -> { name, value, ts }
+let logEntries = [];
+
+$('connect').onclick = connect;
+$('disconnect').onclick = disconnect;
+$('clearLog').onclick = () => { $('log').innerHTML = ''; logEntries = []; };
+$('dlJson').onclick = downloadJson;
+$('dlCsv').onclick = downloadCsv;
+
+async function connect() {
+  try {
+    // Wide net: accept any device, but pre-declare common service UUIDs so we can read them.
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: Object.keys(SERVICES)
+    });
+    log(`selected device: ${device.name || '(no name)'}  id=${device.id}`);
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+
+    setState('connecting', 'warn');
+    server = await device.gatt.connect();
+    setState('connected', 'on');
+    $('connect').disabled = true;
+    $('disconnect').disabled = false;
+    $('dlJson').disabled = false;
+    $('dlCsv').disabled = false;
+
+    log('connected — discovering services…');
+    const services = await server.getPrimaryServices();
+    log(`found ${services.length} primary service(s)`);
+    await renderServices(services);
+  } catch (e) {
+    log('error: ' + e.message, 'err');
+    setState('disconnected');
+  }
+}
+
+function disconnect() {
+  if (device && device.gatt.connected) device.gatt.disconnect();
+}
+
+function onDisconnected() {
+  setState('disconnected');
+  $('connect').disabled = false;
+  $('disconnect').disabled = true;
+  log('disconnected');
+}
+
+function setState(text, cls='') {
+  const el = $('state');
+  el.textContent = text;
+  el.className = 'pill' + (cls ? ' ' + cls : '');
+}
+
+async function renderServices(services) {
+  const root = $('services');
+  root.innerHTML = '';
+  for (const svc of services) {
+    const div = document.createElement('div');
+    div.className = 'svc';
+    div.innerHTML = `<b>${svcName(svc.uuid)}</b> <small>${svc.uuid}</small>`;
+    root.appendChild(div);
+    try {
+      const chars = await svc.getCharacteristics();
+      for (const ch of chars) {
+        const row = document.createElement('div');
+        row.className = 'ch';
+        const props = [
+          ch.properties.read && 'read',
+          ch.properties.notify && 'notify',
+          ch.properties.indicate && 'indicate',
+          ch.properties.write && 'write'
+        ].filter(Boolean).join('/');
+        row.innerHTML = `<span class="name">${chName(ch.uuid)}</span> <small>${shortUuid(ch.uuid)} · ${props}</small> <span data-val></span>`;
+        div.appendChild(row);
+        const valSpan = row.querySelector('[data-val]');
+
+        // Read once if supported
+        if (ch.properties.read) {
+          try {
+            const v = await ch.readValue();
+            const parsed = parseValue(ch.uuid, v);
+            valSpan.textContent = ' = ' + parsed;
+            updateLive(ch.uuid, parsed);
+          } catch (e) { valSpan.textContent = ' (read failed)'; }
+        }
+
+        // Subscribe to notifications if supported
+        if (ch.properties.notify || ch.properties.indicate) {
+          try {
+            await ch.startNotifications();
+            ch.addEventListener('characteristicvaluechanged', ev => {
+              const parsed = parseValue(ch.uuid, ev.target.value);
+              valSpan.textContent = ' = ' + parsed;
+              updateLive(ch.uuid, parsed);
+              log(`${chName(ch.uuid)}: ${parsed}`);
+            });
+            log(`subscribed: ${chName(ch.uuid)}`);
+          } catch (e) {
+            log(`subscribe failed for ${chName(ch.uuid)}: ${e.message}`);
+          }
+        }
+      }
+    } catch (e) {
+      div.innerHTML += `<div class="err"><small>characteristic discovery failed: ${e.message}</small></div>`;
+    }
+  }
+}
+
+function updateLive(uuid, value) {
+  liveValues[uuid] = { name: chName(uuid), value, ts: Date.now() };
+  const lines = Object.values(liveValues)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(v => `${v.name.padEnd(28)} ${v.value}`);
+  $('live').textContent = lines.join('\n') || '—';
+}
+
+// ----- Value parsing for known characteristics -----
+function parseValue(uuid, dv) {
+  const u = shortUuid(uuid.toLowerCase());
+  try {
+    switch (u) {
+      case '00002a19': return dv.getUint8(0) + ' %';                          // Battery
+      case '00002a6e': return (dv.getInt16(0, true) * 0.01).toFixed(2) + ' °C'; // Temp
+      case '00002a6f': return (dv.getUint16(0, true) * 0.01).toFixed(2) + ' %'; // Humidity
+      case '00002a6d': return (dv.getUint32(0, true) * 0.1 / 100).toFixed(1) + ' hPa'; // Pressure
+      case '00002a37': return parseHeartRate(dv);
+      case '00002a00':
+      case '00002a29':
+      case '00002a24':
+      case '00002a25':
+      case '00002a26':
+      case '00002a27':
+      case '00002a28':
+        return new TextDecoder().decode(dv.buffer);
+      default:
+        return hexBytes(dv);
+    }
+  } catch (e) {
+    return hexBytes(dv);
+  }
+}
+
+function parseHeartRate(dv) {
+  const flags = dv.getUint8(0);
+  const is16 = flags & 0x01;
+  const bpm = is16 ? dv.getUint16(1, true) : dv.getUint8(1);
+  return `${bpm} bpm`;
+}
+
+function hexBytes(dv) {
+  const out = [];
+  for (let i = 0; i < dv.byteLength; i++) out.push(dv.getUint8(i).toString(16).padStart(2, '0'));
+  return out.join(' ') + (out.length ? ` (${dv.byteLength}B)` : '');
+}
+
+// ----- Export -----
+function downloadJson() {
+  const data = {
+    device: device ? { name: device.name, id: device.id } : null,
+    capturedAt: new Date().toISOString(),
+    log: logEntries,
+    finalLiveValues: liveValues
+  };
+  saveBlob(JSON.stringify(data, null, 2), 'application/json', 'bluetooth-log.json');
+}
+function downloadCsv() {
+  const rows = [['time', 'event']];
+  for (const e of logEntries) rows.push([e.time, e.msg.replace(/"/g, '""')]);
+  const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+  saveBlob(csv, 'text/csv', 'bluetooth-log.csv');
+}
+function saveBlob(text, mime, filename) {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+</script>
+</body>
+</html>

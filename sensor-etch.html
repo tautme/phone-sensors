@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sensor Etch — artist mode</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 1rem auto;
+         padding: 0 1rem; line-height: 1.4; background: #0a0a0d; color: #e6e6ea; }
+  h1 { font-size: 1.3rem; margin: 0 0 .8rem; font-weight: 600; letter-spacing: -0.01em; }
+  .frame {
+    border: 12px solid #1a1a22; border-radius: 14px;
+    box-shadow: inset 0 2px 8px #0008, 0 8px 28px #0008;
+    width: 100%; aspect-ratio: 1 / 1; overflow: hidden;
+    background: #888; position: relative;
+  }
+  canvas#art { width: 100%; height: 100%; display: block; touch-action: none; }
+  #cam { position: absolute; bottom: 8px; right: 8px;
+         width: 60px; height: 80px; object-fit: cover;
+         border: 1px solid #fff4; border-radius: 4px; opacity: .85; pointer-events: none; }
+  .row { display: flex; gap: .5rem; align-items: center; margin: .5rem 0; flex-wrap: wrap; }
+  button { padding: .55rem 1rem; font-size: .95rem; cursor: pointer;
+           background: #1a1a22; color: #e6e6ea; border: 1px solid #2d2d3d; border-radius: 4px; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .pills { display: flex; gap: .35rem; flex-wrap: wrap; }
+  .pill { padding: 2px 9px; border-radius: 999px; font-size: .72rem;
+          background: #1a1a22; color: #6a6a7a; border: 1px solid #2d2d3d;
+          font-family: ui-monospace, monospace; }
+  .pill.on { background: #16a34a; color: #fff; border-color: #16a34a; }
+  .pill.warn { background: #d4a017; color: #fff; border-color: #d4a017; }
+  .chip { display: inline-flex; align-items: center; gap: .35rem;
+          padding: 2px 9px 2px 6px; border-radius: 999px; font-size: .72rem;
+          background: #1a1a22; border: 1px solid #2d2d3d;
+          font-family: ui-monospace, monospace; }
+  .chip .swatch { width: 14px; height: 14px; border-radius: 50%; background: #888;
+                  border: 1px solid #fff3; }
+  .chip .bar { width: 50px; height: 6px; background: #2d2d3d; border-radius: 3px; overflow: hidden; }
+  .chip .bar > span { display: block; height: 100%; background: #fff; width: 0%; }
+  small { color: #8a8a98; }
+  .legend { font-size: .8rem; color: #8a8a98; margin-top: .8rem;
+            border-left: 2px solid #2d2d3d; padding-left: .7rem; }
+  .legend b { color: #e6e6ea; font-weight: 600; }
+  input[type=range] { vertical-align: middle; width: 110px; }
+</style>
+</head>
+<body>
+
+<h1>Sensor Etch <small style="font-weight:400">— artist mode</small></h1>
+
+<div class="row pills">
+  <span id="pTilt"  class="pill">tilt</span>
+  <span id="pMotion" class="pill">motion</span>
+  <span id="pMic"   class="pill">mic</span>
+  <span id="pCam"   class="pill">cam</span>
+  <span id="pNet"   class="pill">net</span>
+  <span id="pSnd"   class="pill">sound</span>
+</div>
+
+<div class="row">
+  <span class="chip"><span class="swatch" id="colorSw"></span> ink</span>
+  <span class="chip"><span class="bar"><span id="sizeBar"></span></span> brush</span>
+  <span class="chip"><span class="swatch" id="bgSw"></span> ground</span>
+  <span id="netLabel" class="chip">— Mbps</span>
+  <span id="noteLabel" class="chip">—</span>
+  <span class="chip"><span class="bar"><span id="accelBar" style="background:#ff8585"></span></span> motion</span>
+</div>
+
+<div class="row">
+  <label><small>percussion</small>
+    <select id="percSel">
+      <option value="kit">drum kit (kick/snare/hat)</option>
+      <option value="bell">bells</option>
+      <option value="wood">woodblock</option>
+      <option value="bowl">singing bowl</option>
+      <option value="pluck">pizzicato (matches violin)</option>
+      <option value="off">off</option>
+    </select>
+  </label>
+  <label><small>sensitivity</small> <input id="hitSens" type="range" min="0.4" max="3" step="0.1" value="1.2"></label>
+</div>
+
+<div class="frame">
+  <canvas id="art"></canvas>
+  <video id="cam" autoplay muted playsinline></video>
+</div>
+
+<div class="row">
+  <button id="begin" class="primary">Begin</button>
+  <button id="muteBtn" disabled>🔊 sound on</button>
+  <label><small>vol</small> <input id="volSlider" type="range" min="0" max="1" step="0.01" value="0.5"></label>
+  <button id="save" disabled>Save PNG</button>
+  <button id="clear" disabled>Clear</button>
+</div>
+
+<div class="legend">
+  <b>tilt</b> moves the pen — vertical position picks a violin note (pentatonic, snapped).
+  <b>sound</b> input sets brush size and bow pressure (volume + brightness).
+  <b>camera</b> sets ink color and the violin's tone (warm hues = darker, cool = brighter).
+  <b>connection speed</b> tints the background and sets reverb size — slow & cavernous, fast & dry.
+  Touch the canvas to override the pen.
+</div>
+
+<p><small>Needs <code>https://</code> or <code>localhost</code>. Tap "Begin" and grant motion + microphone + camera. iOS asks once. Speed test pulls 512 KB from Cloudflare every 15 seconds.</small></p>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ===== Canvas setup =====
+const art = $('art'), ctx = art.getContext('2d');
+const strokes = document.createElement('canvas');
+const sctx = strokes.getContext('2d');
+let W = 0, H = 0;
+
+function fitCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const r = art.getBoundingClientRect();
+  art.width = Math.round(r.width * dpr);
+  art.height = Math.round(r.height * dpr);
+  const old = strokes.width ? sctx.getImageData(0, 0, strokes.width, strokes.height) : null;
+  strokes.width = art.width; strokes.height = art.height;
+  sctx.lineCap = 'round'; sctx.lineJoin = 'round';
+  if (old) sctx.putImageData(old, 0, 0);
+  W = art.width; H = art.height;
+  if (penX === 0 && penY === 0) { penX = W / 2; penY = H / 2; }
+  ctx.imageSmoothingEnabled = true;
+}
+window.addEventListener('resize', fitCanvas);
+
+// ===== State =====
+let running = false;
+let penX = 0, penY = 0, lastX = 0, lastY = 0;
+let calBeta = 0, calGamma = 0;
+let orient = { beta: 0, gamma: 0 };
+let micRms = 0, micSmooth = 0;
+let camColor = [200, 200, 200];
+let inkColor = [200, 200, 200];
+let camHueDeg = 0, camSat = 0;
+let speedMbps = null;
+let bgHueTarget = 30, bgHue = 30, bgSat = 18, bgLight = 28;
+let lastT = 0;
+let velocitySmooth = 0;
+
+// ===== UI handlers =====
+$('begin').onclick = begin;
+$('save').onclick = savePng;
+$('clear').onclick = () => { sctx.clearRect(0, 0, strokes.width, strokes.height); };
+$('muteBtn').onclick = toggleMute;
+$('volSlider').oninput = e => { if (audio) audio.master.gain.value = +e.target.value * (muted ? 0 : 1); };
+
+let touchOverride = false;
+function setPenFromEvent(e) {
+  const r = art.getBoundingClientRect();
+  const x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+  const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+  penX = (x / r.width) * W;
+  penY = (y / r.height) * H;
+}
+art.addEventListener('pointerdown', e => { touchOverride = true; setPenFromEvent(e); });
+art.addEventListener('pointermove', e => { if (touchOverride) setPenFromEvent(e); });
+art.addEventListener('pointerup',   () => { touchOverride = false; });
+art.addEventListener('pointerleave',() => { touchOverride = false; });
+
+// ===== Begin: request all permissions in one gesture =====
+async function begin() {
+  $('begin').disabled = true;
+  fitCanvas();
+
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      await DeviceOrientationEvent.requestPermission();
+    }
+    if (typeof DeviceMotionEvent !== 'undefined' &&
+        typeof DeviceMotionEvent.requestPermission === 'function') {
+      await DeviceMotionEvent.requestPermission();
+    }
+    window.addEventListener('deviceorientation', e => {
+      orient.beta = e.beta || 0;
+      orient.gamma = e.gamma || 0;
+    });
+    window.addEventListener('devicemotion', onMotion);
+    setTimeout(() => { calBeta = orient.beta; calGamma = orient.gamma; }, 400);
+    pillOn('pTilt', 'tilt');
+    pillOn('pMotion', 'motion');
+  } catch { pillWarn('pTilt', 'tilt off'); pillWarn('pMotion', 'motion off'); }
+
+  try {
+    const mic = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+    setupMic(mic);
+    pillOn('pMic', 'mic');
+  } catch { pillWarn('pMic', 'mic off'); }
+
+  try {
+    const cam = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 320 }, height: { ideal: 240 } },
+      audio: false
+    });
+    $('cam').srcObject = cam;
+    setupCamSampling();
+    pillOn('pCam', 'cam');
+  } catch { pillWarn('pCam', 'cam off'); }
+
+  startSpeedLoop();
+  pillOn('pNet', 'net');
+
+  // ===== Audio (violin synth) — needs the user gesture from the Begin click =====
+  try {
+    setupAudio();
+    pillOn('pSnd', 'sound');
+    $('muteBtn').disabled = false;
+  } catch (e) { pillWarn('pSnd', 'sound off'); }
+
+  $('save').disabled = false;
+  $('clear').disabled = false;
+  running = true;
+  lastT = performance.now();
+  requestAnimationFrame(loop);
+}
+
+function pillOn(id, label)   { const e = $(id); e.textContent = label; e.className = 'pill on'; }
+function pillWarn(id, label) { const e = $(id); e.textContent = label; e.className = 'pill warn'; }
+
+// ===== Mic =====
+function setupMic(stream) {
+  // route to a separate audio context so the violin output can't leak back in
+  const ac = new (window.AudioContext || window.webkitAudioContext)();
+  const src = ac.createMediaStreamSource(stream);
+  const ana = ac.createAnalyser();
+  ana.fftSize = 1024;
+  src.connect(ana);
+  const buf = new Float32Array(ana.fftSize);
+  function tick() {
+    ana.getFloatTimeDomainData(buf);
+    let s = 0; for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+    micRms = Math.sqrt(s / buf.length);
+    requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+// ===== Accelerometer / motion =====
+let accelMag = 0, accelSmooth = 0, lastHitT = 0;
+let hitState = 'wait';     // 'wait' | 'rising'
+let hitPeak = 0;
+
+function onMotion(e) {
+  // prefer .acceleration (gravity removed) when available
+  const a = e.acceleration && (e.acceleration.x !== null) ? e.acceleration : e.accelerationIncludingGravity;
+  if (!a) return;
+  const ax = a.x || 0, ay = a.y || 0, az = a.z || 0;
+  let mag = Math.hypot(ax, ay, az);
+  // if we fell back to includingGravity, subtract ~9.81 baseline
+  if (a === e.accelerationIncludingGravity) mag = Math.abs(mag - 9.81);
+  accelMag = mag;
+  accelSmooth = lerp(accelSmooth, mag, 0.3);
+
+  // peak detector with hysteresis + refractory period
+  const thr = +$('hitSens').value;
+  const now = performance.now();
+  if (hitState === 'wait') {
+    if (mag > thr) { hitState = 'rising'; hitPeak = mag; }
+  } else {
+    if (mag > hitPeak) hitPeak = mag;
+    else if (mag < thr * 0.5) {
+      if (now - lastHitT > 110) {  // 110 ms refractory ≈ 545 BPM ceiling, plenty
+        lastHitT = now;
+        triggerHit(hitPeak);
+      }
+      hitState = 'wait';
+    }
+  }
+}
+
+// ===== Camera color sampling =====
+const sampleC = document.createElement('canvas');
+sampleC.width = 32; sampleC.height = 32;
+const samCtx = sampleC.getContext('2d', { willReadFrequently: true });
+
+function setupCamSampling() {
+  const v = $('cam');
+  function tick() {
+    if (v.videoWidth) {
+      const sw = v.videoWidth * 0.5, sh = v.videoHeight * 0.5;
+      const sx = (v.videoWidth - sw) / 2, sy = (v.videoHeight - sh) / 2;
+      samCtx.drawImage(v, sx, sy, sw, sh, 0, 0, 32, 32);
+      const d = samCtx.getImageData(0, 0, 32, 32).data;
+      let r=0, g=0, b=0;
+      for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i+1]; b += d[i+2]; }
+      const n = d.length / 4;
+      camColor = [r/n, g/n, b/n];
+    }
+    setTimeout(tick, 200);
+  }
+  tick();
+}
+
+// ===== Speed test =====
+async function runSpeedTest() {
+  const bytes = 512 * 1024;
+  const url = `https://speed.cloudflare.com/__down?bytes=${bytes}&_=${Math.random()}`;
+  const t0 = performance.now();
+  try {
+    const res = await fetch(url, { cache: 'no-store' });
+    const reader = res.body.getReader();
+    let recv = 0;
+    while (true) { const { done, value } = await reader.read(); if (done) break; recv += value.length; }
+    const ms = performance.now() - t0;
+    speedMbps = (recv * 8) / (ms / 1000) / 1e6;
+    $('netLabel').textContent = speedMbps.toFixed(1) + ' Mbps';
+    const c = Math.max(0, Math.min(100, speedMbps));
+    bgHueTarget = (c / 100) * 220;
+  } catch {
+    speedMbps = null;
+    $('netLabel').textContent = 'offline';
+    bgHueTarget = 0;
+  }
+}
+function startSpeedLoop() { runSpeedTest(); setInterval(runSpeedTest, 15000); }
+
+// ===== VIOLIN SYNTH =====
+let audio = null;
+let muted = false;
+const VIOLIN_NOTES = [196.00, 220.00, 246.94, 293.66, 329.63, 392.00, 440.00,
+                      493.88, 587.33, 659.25, 783.99, 880.00, 987.77, 1174.66, 1318.51];
+const NOTE_NAMES = ['G3','A3','B3','D4','E4','G4','A4','B4','D5','E5','G5','A5','B5','D6','E6'];
+
+function setupAudio() {
+  const ac = new (window.AudioContext || window.webkitAudioContext)();
+  if (ac.state === 'suspended') ac.resume();
+
+  const master = ac.createGain();
+  master.gain.value = +$('volSlider').value;
+  master.connect(ac.destination);
+
+  // procedural reverb
+  const conv = ac.createConvolver();
+  conv.buffer = makeIR(ac, 2.6, 3);
+  const wet = ac.createGain(); wet.gain.value = 0.25;
+  const dry = ac.createGain(); dry.gain.value = 0.85;
+  conv.connect(wet); wet.connect(master);
+  dry.connect(master);
+
+  // two slightly detuned saws (chorus → fuller, more violin-like)
+  const osc1 = ac.createOscillator(); osc1.type = 'sawtooth'; osc1.detune.value = -6;
+  const osc2 = ac.createOscillator(); osc2.type = 'sawtooth'; osc2.detune.value =  6;
+
+  // bow noise: filtered white noise mixed in low
+  const noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+  const nd = noiseBuf.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = (Math.random() * 2 - 1) * 0.4;
+  const noise = ac.createBufferSource();
+  noise.buffer = noiseBuf; noise.loop = true;
+  const noiseFilt = ac.createBiquadFilter();
+  noiseFilt.type = 'bandpass'; noiseFilt.frequency.value = 3200; noiseFilt.Q.value = 1.5;
+  const noiseGain = ac.createGain(); noiseGain.gain.value = 0.03;
+  noise.connect(noiseFilt).connect(noiseGain);
+
+  // body resonance (formant-ish)
+  const body = ac.createBiquadFilter();
+  body.type = 'bandpass'; body.frequency.value = 1800; body.Q.value = 1.2;
+
+  // tone (modulated by camera hue)
+  const tone = ac.createBiquadFilter();
+  tone.type = 'lowpass'; tone.frequency.value = 3000; tone.Q.value = 0.7;
+
+  // voice envelope (modulated by mic + pen velocity)
+  const voice = ac.createGain(); voice.gain.value = 0;
+
+  // vibrato LFO → frequency
+  const vib = ac.createOscillator(); vib.type = 'sine'; vib.frequency.value = 5.5;
+  const vibDepth = ac.createGain(); vibDepth.gain.value = 3.5;
+  vib.connect(vibDepth);
+  vibDepth.connect(osc1.frequency);
+  vibDepth.connect(osc2.frequency);
+
+  // wire it up
+  osc1.connect(body); osc2.connect(body); noiseGain.connect(body);
+  body.connect(tone); tone.connect(voice);
+  voice.connect(dry); voice.connect(conv);
+
+  // percussion bus — feeds both dry and reverb so hits sit in the same space as the violin
+  const percBus = ac.createGain(); percBus.gain.value = 0.9;
+  percBus.connect(dry); percBus.connect(conv);
+
+  osc1.start(); osc2.start(); noise.start(); vib.start();
+
+  audio = { ac, master, voice, osc1, osc2, tone, wet, vibDepth, percBus };
+}
+
+function makeIR(ac, duration, decay) {
+  const len = ac.sampleRate * duration;
+  const ir = ac.createBuffer(2, len, ac.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ir.getChannelData(ch);
+    for (let i = 0; i < len; i++) {
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+    }
+  }
+  return ir;
+}
+
+// ===== Percussion =====
+// Each peak above the threshold fires one hit. Hit "intensity" comes from the peak magnitude.
+// The kit voice cycles kick → snare → hat → hat for a beat-pattern feel.
+let kitStep = 0;
+
+function triggerHit(peak) {
+  if (!audio) return;
+  const kind = $('percSel').value;
+  if (kind === 'off') return;
+  // velocity: 0..1 from peak above threshold up to ~3× threshold
+  const thr = +$('hitSens').value;
+  const vel = Math.min(1, Math.max(0.15, (peak - thr) / (thr * 2)));
+  switch (kind) {
+    case 'kit': {
+      const step = kitStep++ % 4;
+      if (step === 0) playKick(vel);
+      else if (step === 2) playSnare(vel);
+      else playHat(vel);
+      break;
+    }
+    case 'bell':  playBell(vel); break;
+    case 'wood':  playWood(vel); break;
+    case 'bowl':  playBowl(vel); break;
+    case 'pluck': playPluck(vel); break;
+  }
+}
+
+function playKick(v) {
+  const ac = audio.ac, t = ac.currentTime;
+  const o = ac.createOscillator(); o.type = 'sine';
+  const g = ac.createGain();
+  o.frequency.setValueAtTime(140, t);
+  o.frequency.exponentialRampToValueAtTime(45, t + 0.18);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.9 * v, t + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+  o.connect(g).connect(audio.percBus);
+  o.start(t); o.stop(t + 0.35);
+}
+
+function playSnare(v) {
+  const ac = audio.ac, t = ac.currentTime;
+  // tonal body
+  const o = ac.createOscillator(); o.type = 'triangle'; o.frequency.value = 220;
+  const og = ac.createGain();
+  og.gain.setValueAtTime(0.0001, t);
+  og.gain.exponentialRampToValueAtTime(0.4 * v, t + 0.005);
+  og.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+  o.connect(og).connect(audio.percBus);
+  o.start(t); o.stop(t + 0.15);
+  // noise crack
+  const buf = ac.createBuffer(1, ac.sampleRate * 0.2, ac.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const n = ac.createBufferSource(); n.buffer = buf;
+  const f = ac.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 1800;
+  const ng = ac.createGain();
+  ng.gain.setValueAtTime(0.0001, t);
+  ng.gain.exponentialRampToValueAtTime(0.7 * v, t + 0.003);
+  ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+  n.connect(f).connect(ng).connect(audio.percBus);
+  n.start(t); n.stop(t + 0.2);
+}
+
+function playHat(v) {
+  const ac = audio.ac, t = ac.currentTime;
+  const buf = ac.createBuffer(1, ac.sampleRate * 0.1, ac.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const n = ac.createBufferSource(); n.buffer = buf;
+  const f = ac.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 7000;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.35 * v, t + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+  n.connect(f).connect(g).connect(audio.percBus);
+  n.start(t); n.stop(t + 0.08);
+}
+
+// FM-style bell — two sines, one modulating the other's frequency
+function playBell(v) {
+  const ac = audio.ac, t = ac.currentTime;
+  const carriers = [880, 1320];          // root + a fifth above for shimmer
+  for (const f0 of carriers) {
+    const car = ac.createOscillator(); car.type = 'sine'; car.frequency.value = f0;
+    const mod = ac.createOscillator(); mod.type = 'sine'; mod.frequency.value = f0 * 1.4;
+    const modGain = ac.createGain(); modGain.gain.value = 600;
+    mod.connect(modGain).connect(car.frequency);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.35 * v, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+    car.connect(g).connect(audio.percBus);
+    car.start(t); mod.start(t);
+    car.stop(t + 1.7); mod.stop(t + 1.7);
+  }
+}
+
+function playWood(v) {
+  const ac = audio.ac, t = ac.currentTime;
+  // sharp band-passed noise click + tonal pop
+  const o = ac.createOscillator(); o.type = 'square'; o.frequency.value = 1200;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.5 * v, t + 0.001);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+  const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1500; f.Q.value = 6;
+  o.connect(f).connect(g).connect(audio.percBus);
+  o.start(t); o.stop(t + 0.06);
+}
+
+function playBowl(v) {
+  const ac = audio.ac, t = ac.currentTime;
+  // long sustaining tone, slightly inharmonic partials
+  const partials = [220, 220 * 2.74, 220 * 5.43];
+  partials.forEach((f, i) => {
+    const o = ac.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+    const g = ac.createGain();
+    const amp = (0.4 / (i + 1)) * v;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(amp, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 3.5);
+    o.connect(g).connect(audio.percBus);
+    o.start(t); o.stop(t + 3.6);
+  });
+}
+
+// Pizzicato: same pentatonic scale as the violin → blends with the sustained tone
+function playPluck(v) {
+  const ac = audio.ac, t = ac.currentTime;
+  const noteIdx = Math.max(0, Math.min(VIOLIN_NOTES.length - 1,
+    Math.round((1 - penY / Math.max(1, H)) * (VIOLIN_NOTES.length - 1))));
+  const f = VIOLIN_NOTES[noteIdx];
+  const o = ac.createOscillator(); o.type = 'triangle'; o.frequency.value = f;
+  const g = ac.createGain();
+  const filt = ac.createBiquadFilter(); filt.type = 'lowpass';
+  filt.frequency.setValueAtTime(4500, t);
+  filt.frequency.exponentialRampToValueAtTime(800, t + 0.4);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.55 * v, t + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+  o.connect(filt).connect(g).connect(audio.percBus);
+  o.start(t); o.stop(t + 0.5);
+}
+
+function toggleMute() {
+  muted = !muted;
+  $('muteBtn').textContent = muted ? '🔇 sound off' : '🔊 sound on';
+  if (audio) audio.master.gain.value = muted ? 0 : +$('volSlider').value;
+}
+
+// ===== Color helpers =====
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+  let h, s, l = (mx + mn) / 2;
+  if (mx === mn) { h = s = 0; }
+  else {
+    const d = mx - mn;
+    s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    switch (mx) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)); break;
+      case g: h = ((b - r) / d + 2); break;
+      case b: h = ((r - g) / d + 4); break;
+    }
+    h *= 60;
+  }
+  return [h, s * 100, l * 100];
+}
+function hslCss(h, s, l) { return `hsl(${h.toFixed(1)}, ${s.toFixed(1)}%, ${l.toFixed(1)}%)`; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+// ===== Main loop =====
+function loop() {
+  if (!running) return;
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+
+  if (!touchOverride) {
+    const tiltX = (orient.gamma || 0) - calGamma;
+    const tiltY = (orient.beta  || 0) - calBeta;
+    const speed = 8;
+    penX = Math.max(0, Math.min(W, penX + tiltX * speed * dt * (W / 400)));
+    penY = Math.max(0, Math.min(H, penY + tiltY * speed * dt * (H / 400)));
+  }
+
+  // pen velocity (px/sec)
+  const dx = penX - lastX, dy = penY - lastY;
+  const moved = Math.hypot(dx, dy);
+  const velocity = moved / Math.max(0.001, dt);
+  velocitySmooth = lerp(velocitySmooth, velocity, 0.2);
+
+  // mic smoothing
+  micSmooth = lerp(micSmooth, micRms, 0.25);
+  const minR = 1, maxR = 28;
+  const t = Math.min(1, Math.max(0, (micSmooth - 0.005) / 0.15));
+  const radius = (minR + (maxR - minR) * Math.pow(t, 0.6)) * (W / 600);
+
+  // ink color
+  let [hh, ss, ll] = rgbToHsl(camColor[0], camColor[1], camColor[2]);
+  camHueDeg = hh; camSat = ss;
+  ss = Math.min(100, ss * 1.8 + 25);
+  ll = Math.max(35, Math.min(70, ll));
+  inkColor = [
+    lerp(inkColor[0], hh, 0.15),
+    lerp(inkColor[1], ss, 0.15),
+    lerp(inkColor[2], ll, 0.15)
+  ];
+  if (Math.abs(inkColor[0] - hh) > 180) inkColor[0] = hh;
+  $('colorSw').style.background = hslCss(inkColor[0], inkColor[1], inkColor[2]);
+  $('sizeBar').style.width = (Math.min(1, radius / (maxR * (W/600))) * 100) + '%';
+  $('accelBar').style.width = (Math.min(1, accelSmooth / 6) * 100) + '%';
+
+  // background
+  bgHue = lerp(bgHue, bgHueTarget, 0.04);
+  const bgCss = hslCss(bgHue, bgSat, bgLight);
+  $('bgSw').style.background = bgCss;
+
+  // ===== Drive the violin synth from the same sensors =====
+  if (audio) {
+    const ac = audio.ac;
+    const tNow = ac.currentTime;
+
+    // 1) PITCH: pen Y → pentatonic note. Top of canvas = high.
+    const noteIdx = Math.max(0, Math.min(VIOLIN_NOTES.length - 1,
+      Math.round((1 - penY / H) * (VIOLIN_NOTES.length - 1))));
+    const targetFreq = VIOLIN_NOTES[noteIdx];
+    audio.osc1.frequency.setTargetAtTime(targetFreq, tNow, 0.04);
+    audio.osc2.frequency.setTargetAtTime(targetFreq, tNow, 0.04);
+    $('noteLabel').textContent = NOTE_NAMES[noteIdx];
+
+    // 2) AMPLITUDE: mic + pen velocity. Quiet & still = silent. Either drives "bowing".
+    const micAmp = Math.min(1, micSmooth * 4);
+    const movAmp = Math.min(1, velocitySmooth / (W * 0.8));
+    const target = Math.max(micAmp, movAmp) * 0.55;
+    audio.voice.gain.setTargetAtTime(target, tNow, 0.05);
+
+    // 3) TIMBRE: camera hue → lowpass cutoff. Warm (red, hue~0) = darker, cool (blue, hue~240) = brighter.
+    //    Saturation also opens the filter (vivid colors = lively tone).
+    const huePart = camHueDeg / 360;
+    const coolness = Math.abs(huePart - 0); // 0 (red) to 0.5 (cyan/blue) and back
+    let openness;
+    if (huePart < 0.5) openness = huePart * 2;       // 0..1 over 0..180°
+    else openness = (1 - huePart) * 2;               // 1..0 over 180..360°
+    const satBoost = Math.min(1, camSat / 80);
+    const cutoffHz = 600 + (openness * 0.7 + satBoost * 0.3) * 5400;
+    audio.tone.frequency.setTargetAtTime(cutoffHz, tNow, 0.1);
+
+    // 4) REVERB: speed → wet level. Slow (or offline) = wet, fast = dry.
+    const sp = speedMbps == null ? 0 : speedMbps;
+    const wetLevel = sp == null ? 0.5 : Math.max(0.04, 0.55 - Math.min(1, sp / 80) * 0.5);
+    audio.wet.gain.setTargetAtTime(wetLevel, tNow, 0.5);
+
+    // bonus: pen velocity slightly increases vibrato depth ("expressive" bowing)
+    const vibD = 2 + Math.min(1, velocitySmooth / (W * 0.5)) * 6;
+    audio.vibDepth.gain.setTargetAtTime(vibD, tNow, 0.1);
+  }
+
+  // ===== Stroke into strokes layer =====
+  if (moved > 0.5 && lastX > 0 && lastY > 0) {
+    sctx.strokeStyle = hslCss(inkColor[0], inkColor[1], inkColor[2]);
+    sctx.lineWidth = radius * 2;
+    sctx.beginPath();
+    sctx.moveTo(lastX, lastY);
+    sctx.lineTo(penX, penY);
+    sctx.stroke();
+  }
+  lastX = penX; lastY = penY;
+
+  // ===== Composite =====
+  ctx.fillStyle = bgCss;
+  ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(strokes, 0, 0);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(penX, penY, Math.max(2, radius), 0, 7);
+  ctx.stroke();
+
+  requestAnimationFrame(loop);
+}
+
+// ===== Save composed PNG =====
+function savePng() {
+  const out = document.createElement('canvas');
+  out.width = W; out.height = H;
+  const o = out.getContext('2d');
+  o.fillStyle = hslCss(bgHue, bgSat, bgLight);
+  o.fillRect(0, 0, W, H);
+  o.drawImage(strokes, 0, 0);
+  out.toBlob(b => {
+    const url = URL.createObjectURL(b);
+    const a = document.createElement('a');
+    a.href = url; a.download = `sensor-etch-${Date.now()}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, 'image/png');
+}
+
+// initial paint
+fitCanvas();
+ctx.fillStyle = '#888'; ctx.fillRect(0, 0, W, H);
+ctx.fillStyle = '#444';
+ctx.font = (W / 30) + 'px system-ui, sans-serif';
+ctx.textAlign = 'center';
+ctx.fillText('tap "Begin"', W/2, H/2);
+</script>
+</body>
+</html>
