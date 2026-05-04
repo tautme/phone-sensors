@@ -6,6 +6,10 @@
 <title>What your phone can do in a browser</title>
 <meta name="description" content="A walk through the sensors hidden inside every smartphone, and what you can build with them in plain HTML — no apps, no installs, no servers.">
 <style>
+figure { margin: 2rem 0; text-align: center; }
+figure img { max-width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--rule); }
+figcaption { color: var(--muted); font-size: .85rem; margin-top: .5rem;
+             font-family: ui-sans-serif, system-ui, sans-serif; font-style: italic; }
   :root {
     --bg: #fbfbf8;
     --ink: #1a1a1f;
@@ -78,6 +82,10 @@
 <body>
 
 <h1>What your phone can do in a browser</h1>
+<figure>
+  <img src="sensor-etch-1777853514927.jpg" alt="Painting made with the Sensor Etch demo">
+  <figcaption>make art with phone sensors, sound and dance</figcaption>
+</figure>
 <p class="lead">A walk through the sensors hidden inside every smartphone, and what you can build with them in plain HTML — no apps, no installs, no servers.</p>
 
 <p>Your phone is dense with sensors. Cameras and microphones, of course, but also accelerometers, gyroscopes, magnetometers, ambient light sensors, GPS, Bluetooth radios. Most of them are accessible from a web page — a single HTML file, no app store involved. I built a series of small demos to see how far you can get with just <code>&lt;canvas&gt;</code>, the Web APIs, and a couple hundred lines of JavaScript each.</p>
