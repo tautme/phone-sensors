@@ -1,0 +1,920 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sensor Etch — Product Tour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #060609;
+    --ink: #e8e4dc;
+    --muted: #6e6e82;
+    --cyan: #4ecdc4;
+    --yellow: #ffe66d;
+    --coral: #ff8585;
+    --violet: #b78bfa;
+    --green: #34d399;
+    --orange: #fb923c;
+    --progress-h: 2px;
+  }
+
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--ink);
+    font-family: 'DM Mono', monospace;
+  }
+
+  /* ===== progress bar ===== */
+  #progress-bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    height: var(--progress-h); background: #1a1a28;
+  }
+  #progress-fill {
+    height: 100%; background: var(--cyan);
+    transition: width .5s cubic-bezier(.4,0,.2,1);
+    width: 0%;
+  }
+
+  /* ===== slide container ===== */
+  #slides {
+    width: 100%; height: 100%;
+    display: flex;
+    transition: transform .7s cubic-bezier(.77,0,.18,1);
+  }
+
+  .slide {
+    min-width: 100vw; height: 100vh;
+    display: grid;
+    grid-template-columns: 55% 45%;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ===== canvas panel ===== */
+  .canvas-panel {
+    position: relative; overflow: hidden;
+  }
+  .canvas-panel canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+  }
+  /* subtle vignette at the join */
+  .canvas-panel::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent 80%, var(--bg) 100%);
+    pointer-events: none;
+  }
+
+  /* ===== text panel ===== */
+  .text-panel {
+    display: flex; flex-direction: column;
+    justify-content: center;
+    padding: 3rem 3.5rem 3rem 2rem;
+    position: relative; z-index: 1;
+  }
+
+  .slide-num {
+    font-size: .65rem; letter-spacing: .18em; color: var(--muted);
+    text-transform: uppercase; margin-bottom: 1.2rem;
+    font-weight: 300;
+  }
+
+  .sensor-label {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: clamp(2.4rem, 4vw, 3.4rem);
+    font-weight: 300; line-height: 1.05;
+    margin-bottom: .5rem;
+    letter-spacing: -.01em;
+  }
+  .sensor-label em { font-style: italic; }
+
+  .sensor-accent {
+    width: 40px; height: 2px;
+    margin-bottom: 1.4rem;
+    border-radius: 1px;
+  }
+
+  .sensor-desc {
+    font-size: .82rem; line-height: 1.7;
+    color: #b0aec4;
+    max-width: 300px;
+    font-weight: 300;
+    letter-spacing: .01em;
+    margin-bottom: 1.6rem;
+  }
+
+  .sensor-mapping {
+    border-left: 1px solid #2a2a3a;
+    padding-left: 1rem;
+    display: flex; flex-direction: column; gap: .45rem;
+  }
+  .mapping-row {
+    display: flex; align-items: baseline; gap: .6rem;
+    font-size: .72rem;
+  }
+  .mapping-input { color: var(--muted); font-weight: 300; min-width: 80px; }
+  .mapping-arrow { color: #2a2a3a; }
+  .mapping-output { font-weight: 400; }
+
+  /* ===== navigation ===== */
+  #nav {
+    position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 1rem; z-index: 100;
+  }
+  .nav-btn {
+    width: 36px; height: 36px; border-radius: 50%;
+    border: 1px solid #2a2a3a; background: #0f0f1a;
+    color: var(--ink); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .85rem; transition: border-color .2s, background .2s;
+  }
+  .nav-btn:hover { border-color: var(--cyan); background: #161626; }
+  .nav-btn:disabled { opacity: .25; cursor: default; }
+
+  .dots {
+    display: flex; gap: .4rem; align-items: center;
+  }
+  .dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: #2a2a3a; cursor: pointer;
+    transition: background .3s, transform .3s;
+  }
+  .dot.active { background: var(--cyan); transform: scale(1.5); }
+
+  /* ===== cta slide ===== */
+  .cta-slide {
+    grid-template-columns: 1fr;
+    place-items: center; text-align: center;
+  }
+  .cta-slide .canvas-panel {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+  }
+  .cta-slide .canvas-panel::after {
+    background: radial-gradient(ellipse at center, transparent 30%, var(--bg) 80%);
+  }
+  .cta-content {
+    position: relative; z-index: 10;
+    display: flex; flex-direction: column; align-items: center; gap: 1.2rem;
+    padding: 2rem;
+  }
+  .cta-content h2 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: clamp(3rem, 6vw, 5rem);
+    font-weight: 300; line-height: 1;
+  }
+  .cta-content p {
+    font-size: .82rem; color: #b0aec4; max-width: 360px; line-height: 1.7;
+    font-weight: 300;
+  }
+  .cta-btn {
+    margin-top: .5rem;
+    padding: .75rem 2.2rem; font-size: .82rem;
+    font-family: 'DM Mono', monospace; letter-spacing: .08em;
+    text-transform: uppercase; text-decoration: none;
+    border: 1px solid var(--cyan); color: var(--cyan);
+    background: transparent; border-radius: 2px; cursor: pointer;
+    transition: background .2s, color .2s;
+  }
+  .cta-btn:hover { background: var(--cyan); color: var(--bg); }
+
+  /* ===== keyboard hint ===== */
+  #hint {
+    position: fixed; top: 1.2rem; right: 1.5rem;
+    font-size: .65rem; color: var(--muted); letter-spacing: .1em;
+    font-weight: 300; z-index: 100;
+  }
+
+  @media (max-width: 640px) {
+    .slide { grid-template-columns: 1fr; grid-template-rows: 45vh 1fr; }
+    .canvas-panel::after { background: linear-gradient(180deg, transparent 70%, var(--bg) 100%); }
+    .text-panel { padding: 1.5rem; }
+    .sensor-label { font-size: 2rem; }
+    #hint { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="progress-bar"><div id="progress-fill"></div></div>
+<div id="hint">← → arrow keys to navigate</div>
+
+<div id="slides">
+  <!-- slides injected by JS -->
+</div>
+
+<nav id="nav">
+  <button class="nav-btn" id="prev">←</button>
+  <div class="dots" id="dots"></div>
+  <button class="nav-btn" id="next">→</button>
+</nav>
+
+<script>
+// ===== slide data =====
+const slides = [
+  {
+    title: 'Sensor\nEtch',
+    subtitle: 'your phone is\nan instrument',
+    accent: '#4ecdc4',
+    desc: 'A drawing canvas that listens. Every sensor in your phone — tilt, sound, camera, compass, connection — feeds the painting and the music simultaneously.',
+    mappings: [
+      ['motion', '→', 'pen + percussion'],
+      ['sound', '→', 'brush size + violin'],
+      ['camera', '→', 'ink color + timbre'],
+      ['connection', '→', 'background + reverb']
+    ],
+    draw: drawIntro
+  },
+  {
+    num: '01',
+    sensor: 'Accelerometer\n& Gyroscope',
+    accent: '#4ecdc4',
+    desc: 'Tilt the phone like a tray balancing a marble. The pen follows the physics — small tilts trace delicate lines, steep tilts pull fast sweeps across the canvas.',
+    mappings: [
+      ['tilt X', '→', 'pen horizontal'],
+      ['tilt Y', '→', 'pen vertical'],
+      ['jolt / bump', '→', 'percussion hit'],
+      ['velocity', '→', 'vibrato depth']
+    ],
+    draw: drawTilt
+  },
+  {
+    num: '02',
+    sensor: 'Microphone',
+    accent: '#ffe66d',
+    desc: 'The mic measures volume sixty times per second. Silence draws a hairline. A whisper makes a medium stroke. A shout or a handclap floods the canvas.',
+    mappings: [
+      ['ambient noise', '→', 'fine line'],
+      ['speaking voice', '→', 'medium brush'],
+      ['loud sound', '→', 'broad stroke'],
+      ['mic RMS', '→', 'bow pressure']
+    ],
+    draw: drawMic
+  },
+  {
+    num: '03',
+    sensor: 'Camera',
+    accent: '#ff8585',
+    desc: 'Every 200ms, the rear camera samples the average color of what it sees. That color, saturation-boosted and smoothed, becomes the ink. Point at fire and paint red. Point at sky and paint blue.',
+    mappings: [
+      ['avg hue', '→', 'ink color'],
+      ['saturation', '→', 'color vividness'],
+      ['warm hue', '→', 'darker violin tone'],
+      ['cool hue', '→', 'brighter timbre']
+    ],
+    draw: drawCamera
+  },
+  {
+    num: '04',
+    sensor: 'Connection\nSpeed',
+    accent: '#b78bfa',
+    desc: 'Every 15 seconds, the app downloads 512 KB from a Cloudflare edge server and measures throughput. Slow connections turn the canvas warm amber. Fast connections cool it to deep blue.',
+    mappings: [
+      ['0 Mbps', '→', 'red-amber ground'],
+      ['50 Mbps', '→', 'teal ground'],
+      ['100+ Mbps', '→', 'deep blue ground'],
+      ['slow speed', '→', 'cathedral reverb'],
+      ['fast speed', '→', 'dry studio']
+    ],
+    draw: drawSpeed
+  },
+  {
+    num: '05',
+    sensor: 'Percussion\nEngine',
+    accent: '#fb923c',
+    desc: 'When acceleration peaks above the threshold — a tap, a step, a bump — the app fires a synthesized hit. The style is selectable: drum kit cycles kick → snare → hat. Bells, bowls, woodblock, or pizzicato that harmonizes with the violin.',
+    mappings: [
+      ['light bump', '→', 'soft hit'],
+      ['sharp jolt', '→', 'hard hit'],
+      ['hit velocity', '→', 'volume'],
+      ['pen Y position', '→', 'pizzicato pitch']
+    ],
+    draw: drawPercussion
+  },
+  {
+    num: '06',
+    sensor: 'Violin\nSynthesizer',
+    accent: '#34d399',
+    desc: 'Two detuned sawtooth oscillators plus filtered bow noise, shaped by a bandpass body resonance. The pitch snaps to G-major pentatonic — 15 notes from G3 to E6 — mapped to vertical pen position. There are no wrong notes.',
+    mappings: [
+      ['pen top', '→', 'E6 (highest)'],
+      ['pen middle', '→', 'A4 (middle)'],
+      ['pen bottom', '→', 'G3 (lowest)'],
+      ['5.5 Hz LFO', '→', 'vibrato'],
+      ['reverb wet', '→', 'connection speed']
+    ],
+    draw: drawViolin
+  },
+  {
+    num: '07',
+    sensor: null,
+    title: 'Everything\nat once',
+    accent: '#ffe66d',
+    desc: 'Walk through a room. The camera reads changing colors as you move. Your footsteps fire percussion. The ambient sound swells the brush. The ceiling lights shift the ink. Your connection to the internet tints the air.',
+    mappings: [
+      ['walking speed', '→', 'tempo'],
+      ['room color', '→', 'palette'],
+      ['ambient noise', '→', 'stroke weight'],
+      ['every sensor', '→', 'one painting']
+    ],
+    draw: drawAll,
+    cta: true
+  }
+];
+
+// ===== state =====
+let current = 0;
+const total = slides.length;
+let animFrame = null;
+const canvases = [];
+const ctxs = [];
+
+// ===== build DOM =====
+const slidesEl = document.getElementById('slides');
+const dotsEl = document.getElementById('dots');
+
+slides.forEach((s, i) => {
+  const div = document.createElement('div');
+  div.className = s.cta ? 'slide cta-slide' : 'slide';
+
+  const canvasPanel = document.createElement('div');
+  canvasPanel.className = 'canvas-panel';
+  const cv = document.createElement('canvas');
+  canvasPanel.appendChild(cv);
+  canvases.push(cv);
+  ctxs.push(cv.getContext('2d'));
+  div.appendChild(canvasPanel);
+
+  if (s.cta) {
+    const content = document.createElement('div');
+    content.className = 'cta-content';
+    content.innerHTML = `
+      <h2>${s.title || s.sensor.replace('\n','<br>')}</h2>
+      <p>${s.desc}</p>
+      <a href="sensor-etch.html" class="cta-btn">Open Sensor Etch →</a>
+    `;
+    div.appendChild(content);
+  } else {
+    const tp = document.createElement('div');
+    tp.className = 'text-panel';
+    const num = s.num ? `<div class="slide-num">sensor ${s.num} / 06</div>` : `<div class="slide-num">sensor etch</div>`;
+    const titleText = (s.sensor || s.title || '').replace('\n', '<br>');
+    const mappingRows = (s.mappings || []).map(([inp, arr, out]) =>
+      `<div class="mapping-row"><span class="mapping-input">${inp}</span><span class="mapping-arrow">${arr}</span><span class="mapping-output" style="color:${s.accent}">${out}</span></div>`
+    ).join('');
+    tp.innerHTML = `
+      ${num}
+      <div class="sensor-label"><em>${titleText}</em></div>
+      <div class="sensor-accent" style="background:${s.accent}"></div>
+      <div class="sensor-desc">${s.desc}</div>
+      <div class="sensor-mapping">${mappingRows}</div>
+    `;
+    div.appendChild(tp);
+  }
+
+  slidesEl.appendChild(div);
+
+  const dot = document.createElement('div');
+  dot.className = 'dot' + (i === 0 ? ' active' : '');
+  dot.onclick = () => goTo(i);
+  dotsEl.appendChild(dot);
+});
+
+// ===== navigation =====
+function goTo(idx) {
+  if (idx < 0 || idx >= total) return;
+  if (animFrame) cancelAnimationFrame(animFrame);
+  current = idx;
+  slidesEl.style.transform = `translateX(-${idx * 100}vw)`;
+  document.getElementById('progress-fill').style.width = ((idx + 1) / total * 100) + '%';
+  document.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+  document.getElementById('prev').disabled = idx === 0;
+  document.getElementById('next').disabled = idx === total - 1;
+  fitCanvas(idx);
+  startAnim(idx);
+}
+
+document.getElementById('prev').onclick = () => goTo(current - 1);
+document.getElementById('next').onclick = () => goTo(current + 1);
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') goTo(current + 1);
+  if (e.key === 'ArrowLeft') goTo(current - 1);
+});
+
+function fitCanvas(idx) {
+  const cv = canvases[idx];
+  const ctx = ctxs[idx];
+  const panel = cv.parentElement;
+  const r = panel.getBoundingClientRect();
+  cv.width = Math.round(r.width * (window.devicePixelRatio || 1));
+  cv.height = Math.round(r.height * (window.devicePixelRatio || 1));
+  ctx.setTransform(window.devicePixelRatio || 1, 0, 0, window.devicePixelRatio || 1, 0, 0);
+}
+window.addEventListener('resize', () => { fitCanvas(current); startAnim(current); });
+
+// ===== animation dispatcher =====
+function startAnim(idx) {
+  if (animFrame) cancelAnimationFrame(animFrame);
+  const cv = canvases[idx];
+  const ctx = ctxs[idx];
+  const fn = slides[idx].draw;
+  if (fn) fn(cv, ctx);
+}
+
+// ===== helper =====
+const TWO_PI = Math.PI * 2;
+function lerp(a, b, t) { return a + (b - a) * t; }
+function rand(lo, hi) { return lo + Math.random() * (hi - lo); }
+function hsl(h, s, l) { return `hsl(${h},${s}%,${l}%)`; }
+function hex2rgb(hex) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return [r,g,b];
+}
+
+// ===== slide 0: intro — star field + orbiting particles =====
+function drawIntro(cv, ctx) {
+  const stars = Array.from({length: 120}, () => ({
+    x: rand(0,1), y: rand(0,1), r: rand(0.2,1.2), alpha: rand(0.3,1)
+  }));
+  const orbs = [
+    { angle: 0, speed: .0007, radius: 0.28, r: 8, color: '#4ecdc4' },
+    { angle: 2.1, speed: .0005, radius: 0.33, r: 6, color: '#ffe66d' },
+    { angle: 4.2, speed: .0009, radius: 0.22, r: 5, color: '#ff8585' },
+    { angle: 1.0, speed: .0006, radius: 0.38, r: 4, color: '#b78bfa' },
+  ];
+  const trail = [];
+
+  function frame(t) {
+    const W = cv.getBoundingClientRect().width, H = cv.getBoundingClientRect().height;
+    ctx.fillStyle = '#060609';
+    ctx.fillRect(0, 0, W, H);
+    const cx = W * 0.45, cy = H * 0.52;
+    // stars
+    stars.forEach(s => {
+      ctx.beginPath();
+      ctx.arc(s.x * W, s.y * H, s.r, 0, TWO_PI);
+      ctx.fillStyle = `rgba(200,190,220,${s.alpha * 0.5})`;
+      ctx.fill();
+    });
+    // orbit rings
+    orbs.forEach(o => {
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.min(W,H) * o.radius, 0, TWO_PI);
+      ctx.strokeStyle = `${o.color}18`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
+    // orb trails then orbs
+    orbs.forEach(o => {
+      o.angle += o.speed;
+      const ox = cx + Math.cos(o.angle) * Math.min(W,H) * o.radius;
+      const oy = cy + Math.sin(o.angle) * Math.min(W,H) * o.radius;
+      const grad = ctx.createRadialGradient(ox, oy, 0, ox, oy, o.r * 4);
+      grad.addColorStop(0, o.color + 'cc');
+      grad.addColorStop(1, o.color + '00');
+      ctx.beginPath(); ctx.arc(ox, oy, o.r * 4, 0, TWO_PI);
+      ctx.fillStyle = grad; ctx.fill();
+      ctx.beginPath(); ctx.arc(ox, oy, o.r, 0, TWO_PI);
+      ctx.fillStyle = o.color; ctx.fill();
+    });
+    // centre glow
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 80);
+    g.addColorStop(0, '#4ecdc418'); g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+
+    animFrame = requestAnimationFrame(frame);
+  }
+  animFrame = requestAnimationFrame(frame);
+}
+
+// ===== slide 1: tilt — pen traces a lissajous =====
+function drawTilt(cv, ctx) {
+  let t = 0;
+  const history = [];
+  const MAX = 300;
+  let penX = 0, penY = 0;
+
+  function frame() {
+    const W = cv.getBoundingClientRect().width, H = cv.getBoundingClientRect().height;
+    ctx.fillStyle = 'rgba(6,6,9,0.18)';
+    ctx.fillRect(0, 0, W, H);
+
+    // simulate tilt driving pen — lissajous-ish path
+    const tiltX = Math.sin(t * 0.37) * 0.8 + Math.sin(t * 0.11) * 0.3;
+    const tiltY = Math.cos(t * 0.29) * 0.8 + Math.cos(t * 0.17) * 0.3;
+    t += 0.025;
+    penX = lerp(penX, W * (0.5 + tiltX * 0.38), 0.06);
+    penY = lerp(penY, H * (0.5 + tiltY * 0.38), 0.06);
+    history.push({x: penX, y: penY});
+    if (history.length > MAX) history.shift();
+
+    // draw trail
+    for (let i = 1; i < history.length; i++) {
+      const alpha = (i / history.length);
+      const hue = 170 + (i / history.length) * 60;
+      ctx.beginPath();
+      ctx.moveTo(history[i-1].x, history[i-1].y);
+      ctx.lineTo(history[i].x, history[i].y);
+      ctx.strokeStyle = `hsla(${hue}, 70%, 65%, ${alpha * 0.9})`;
+      ctx.lineWidth = 1.5 + alpha * 2;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+
+    // pen cursor
+    ctx.beginPath(); ctx.arc(penX, penY, 5, 0, TWO_PI);
+    ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.beginPath(); ctx.arc(penX, penY, 12, 0, TWO_PI);
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1; ctx.stroke();
+
+    // tilt bars (bottom)
+    const bx = W * 0.15, by = H - 28, bw = W * 0.7;
+    ctx.fillStyle = '#1a1a2a';
+    ctx.fillRect(bx, by, bw, 6);
+    ctx.fillStyle = '#4ecdc4';
+    ctx.fillRect(bx + bw/2, by, (tiltX * bw/2), 6);
+    ctx.fillStyle = '#ffe66d';
+    const by2 = H - 16;
+    ctx.fillStyle = '#1a1a2a'; ctx.fillRect(bx, by2, bw, 6);
+    ctx.fillStyle = '#ffe66d';
+    ctx.fillRect(bx + bw/2, by2, (tiltY * bw/2), 6);
+
+    // labels
+    ctx.fillStyle = '#4a4a6a'; ctx.font = '10px DM Mono, monospace';
+    ctx.fillText('tilt X', bx, by - 5);
+    ctx.fillText('tilt Y', bx, by2 - 5);
+
+    animFrame = requestAnimationFrame(frame);
+  }
+  ctx.fillStyle = '#060609'; ctx.fillRect(0, 0, cv.width, cv.height);
+  animFrame = requestAnimationFrame(frame);
+}
+
+// ===== slide 2: microphone — sound wave + brush ring =====
+function drawMic(cv, ctx) {
+  let t = 0;
+
+  function frame() {
+    const W = cv.getBoundingClientRect().width, H = cv.getBoundingClientRect().height;
+    ctx.fillStyle = '#060609'; ctx.fillRect(0, 0, W, H);
+    t += 0.04;
+
+    // simulated rms cycles 0..1
+    const rms = (Math.sin(t * 0.6) * 0.5 + 0.5) * (Math.sin(t * 0.17) * 0.3 + 0.7);
+    const brushR = 4 + rms * 40;
+
+    // waveform
+    const wH = H * 0.3, wY = H * 0.65;
+    ctx.beginPath();
+    for (let x = 0; x < W; x++) {
+      const phase = (x / W) * TWO_PI * 3 - t * 2;
+      const amp = rms * wH * 0.9;
+      const y = wY + Math.sin(phase) * amp + Math.sin(phase * 2.3 + 1) * amp * 0.3;
+      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = `rgba(255,230,109,${0.4 + rms * 0.5})`;
+    ctx.lineWidth = 1.5; ctx.stroke();
+
+    // brush ring at center
+    const cx = W * 0.45, cy = H * 0.38;
+    const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, brushR * 2);
+    grd.addColorStop(0, `rgba(255,230,109,${rms * 0.3})`);
+    grd.addColorStop(1, 'transparent');
+    ctx.fillStyle = grd; ctx.fillRect(0, 0, W, H);
+
+    ctx.beginPath(); ctx.arc(cx, cy, brushR, 0, TWO_PI);
+    ctx.strokeStyle = `rgba(255,230,109,${0.5 + rms * 0.5})`;
+    ctx.lineWidth = 2; ctx.stroke();
+
+    // min / max guides
+    ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.arc(cx, cy, 4, 0, TWO_PI);
+    ctx.strokeStyle = '#2a2a3a'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, 44, 0, TWO_PI);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#4a4a6a'; ctx.font = '10px DM Mono, monospace';
+    ctx.fillText('silence', cx + 6, cy - 6);
+    ctx.fillText('loud', cx + 46, cy - 46);
+
+    // rms label
+    ctx.fillStyle = '#ffe66d'; ctx.font = '13px DM Mono, monospace';
+    ctx.fillText(`rms  ${rms.toFixed(3)}`, 20, H - 20);
+    ctx.fillText(`brush  ${brushR.toFixed(0)}px`, 20, H - 6);
+
+    animFrame = requestAnimationFrame(frame);
+  }
+  animFrame = requestAnimationFrame(frame);
+}
+
+// ===== slide 3: camera — color blobs shifting =====
+function drawCamera(cv, ctx) {
+  let t = 0;
+  const blobs = Array.from({length: 6}, (_, i) => ({
+    x: rand(0.2,0.8), y: rand(0.2,0.8),
+    hue: rand(0,360), r: rand(0.12,0.22),
+    speed: rand(0.0003,0.0008), phase: rand(0, TWO_PI)
+  }));
+
+  function frame() {
+    const W = cv.getBoundingClientRect().width, H = cv.getBoundingClientRect().height;
+    ctx.fillStyle = '#060609'; ctx.fillRect(0, 0, W, H);
+    t += 0.012;
+    blobs.forEach(b => b.hue = (b.hue + 0.12) % 360);
+
+    // draw blobs
+    blobs.forEach(b => {
+      const bx = (b.x + Math.sin(t * b.speed * 1000 + b.phase) * 0.08) * W;
+      const by = (b.y + Math.cos(t * b.speed * 800 + b.phase) * 0.08) * H;
+      const br = b.r * Math.min(W, H);
+      const g = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+      g.addColorStop(0, `hsla(${b.hue},70%,60%,0.45)`);
+      g.addColorStop(1, 'transparent');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    });
+
+    // sample box (center of frame)
+    const sw = W * 0.28, sh = H * 0.28;
+    const sx = (W - sw) / 2, sy = (H - sh) / 2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1;
+    ctx.setLineDash([4,4]); ctx.strokeRect(sx, sy, sw, sh); ctx.setLineDash([]);
+
+    // compute "average" color in that box (simulated)
+    const avgHue = (blobs.reduce((s,b) => s + b.hue, 0) / blobs.length + t * 20) % 360;
+    const inkColor = `hsl(${avgHue.toFixed(0)},75%,55%)`;
+
+    // ink swatch
+    const swx = W * 0.1, swy = H * 0.78;
+    ctx.fillStyle = '#0f0f1a'; ctx.fillRect(swx - 4, swy - 4, 80, 30);
+    ctx.fillStyle = inkColor; ctx.fillRect(swx, swy, 20, 20);
+    ctx.fillStyle = '#b0aec4'; ctx.font = '10px DM Mono, monospace';
+    ctx.fillText(`ink  ${Math.round(avgHue)}°`, swx + 26, swy + 14);
+
+    // crosshair on sample box
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.setLineDash([]);
+    const mx = sx + sw/2, my = sy + sh/2;
+    ctx.beginPath(); ctx.moveTo(mx-8, my); ctx.lineTo(mx+8, my); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(mx, my-8); ctx.lineTo(mx, my+8); ctx.stroke();
+
+    animFrame = requestAnimationFrame(frame);
+  }
+  animFrame = requestAnimationFrame(frame);
+}
+
+// ===== slide 4: speed — hue wheel shifting =====
+function drawSpeed(cv, ctx) {
+  let t = 0;
+  let targetHue = 30, hue = 30;
+  let speedMbps = 5;
+  let nextChange = 120;
+
+  function frame() {
+    const W = cv.getBoundingClientRect().width, H = cv.getBoundingClientRect().height;
+    t++;
+    if (t === nextChange) {
+      speedMbps = rand(0, 120);
+      targetHue = (speedMbps / 100) * 220;
+      nextChange = t + 150 + Math.floor(rand(0, 100));
+    }
+    hue = lerp(hue, targetHue, 0.012);
+
+    // background wash
+    const bgColor = `hsl(${hue.toFixed(0)},20%,14%)`;
+    ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
+
+    // speed arc
+    const cx = W * 0.45, cy = H * 0.45, arcR = Math.min(W,H) * 0.3;
+    const startAngle = Math.PI * 0.75, endAngle = Math.PI * 2.25;
+    const fillAngle = startAngle + (endAngle - startAngle) * Math.min(1, speedMbps / 100);
+
+    ctx.beginPath(); ctx.arc(cx, cy, arcR, startAngle, endAngle);
+    ctx.strokeStyle = '#1a1a2a'; ctx.lineWidth = 8; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, arcR, startAngle, fillAngle);
+    ctx.strokeStyle = `hsl(${hue.toFixed(0)},80%,60%)`;
+    ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.stroke();
+
+    // needle
+    const needleAngle = startAngle + (endAngle - startAngle) * Math.min(1, speedMbps / 100);
+    const nx = cx + Math.cos(needleAngle) * arcR;
+    const ny = cy + Math.sin(needleAngle) * arcR;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(nx, ny);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.stroke();
+
+    // speed text
+    ctx.fillStyle = '#e8e4dc'; ctx.font = 'bold 28px DM Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(speedMbps.toFixed(0), cx, cy + 12);
+    ctx.font = '11px DM Mono, monospace'; ctx.fillStyle = '#6e6e82';
+    ctx.fillText('Mbps', cx, cy + 30);
+    ctx.textAlign = 'left';
+
+    // hue label
+    ctx.fillStyle = '#6e6e82'; ctx.font = '10px DM Mono, monospace';
+    ctx.fillText(`background hue  ${Math.round(hue)}°`, 16, H - 20);
+    ctx.fillStyle = `hsl(${hue.toFixed(0)},80%,60%)`;
+    ctx.fillRect(16, H - 14, 60, 8);
+
+    animFrame = requestAnimationFrame(frame);
+  }
+  animFrame = requestAnimationFrame(frame);
+}
+
+// ===== slide 5: percussion — accel wave + ripples =====
+function drawPercussion(cv, ctx) {
+  let t = 0;
+  const ripples = [];
+  let lastHit = -100;
+
+  function tryHit() {
+    const now = t;
+    if (now - lastHit > 60 + rand(0, 40)) {
+      lastHit = now;
+      ripples.push({ t: now, x: rand(0.25, 0.75), y: rand(0.3, 0.7) });
+    }
+  }
+
+  function frame() {
+    const W = cv.getBoundingClientRect().width, H = cv.getBoundingClientRect().height;
+    ctx.fillStyle = '#060609'; ctx.fillRect(0, 0, W, H);
+    t++;
+
+    // simulated accel trace
+    const accel = Math.abs(Math.sin(t * 0.08) * Math.sin(t * 0.13) * 3);
+    if (accel > 1.2) tryHit();
+
+    // trace
+    const traceY = H * 0.72, traceH = 40;
+    ctx.strokeStyle = '#1a1a2a'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, traceY); ctx.lineTo(W, traceY); ctx.stroke();
+
+    const pts = 120;
+    ctx.beginPath();
+    for (let i = 0; i < pts; i++) {
+      const x = (i / pts) * W;
+      const a2 = Math.abs(Math.sin((t - pts + i) * 0.08) * Math.sin((t - pts + i) * 0.13) * 3);
+      const y = traceY - a2 * traceH;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = '#fb923c'; ctx.lineWidth = 1.5; ctx.stroke();
+
+    // threshold line
+    ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(0, traceY - 1.2 * traceH); ctx.lineTo(W, traceY - 1.2 * traceH);
+    ctx.strokeStyle = '#ff858560'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ff858580'; ctx.font = '9px DM Mono, monospace';
+    ctx.fillText('threshold', 6, traceY - 1.2 * traceH - 4);
+
+    // ripples
+    ripples.forEach((r, idx) => {
+      const age = t - r.t;
+      const maxAge = 90;
+      if (age > maxAge) { ripples.splice(idx, 1); return; }
+      const progress = age / maxAge;
+      const radius = progress * Math.min(W, H) * 0.25;
+      const alpha = 1 - progress;
+      ctx.beginPath(); ctx.arc(r.x * W, r.y * H, radius, 0, TWO_PI);
+      ctx.strokeStyle = `rgba(251,146,60,${alpha * 0.7})`;
+      ctx.lineWidth = 2 * (1 - progress); ctx.stroke();
+      if (age < 8) {
+        ctx.beginPath(); ctx.arc(r.x * W, r.y * H, 5, 0, TWO_PI);
+        ctx.fillStyle = '#fb923c'; ctx.fill();
+      }
+    });
+
+    // accel readout
+    ctx.fillStyle = '#fb923c'; ctx.font = '12px DM Mono, monospace';
+    ctx.fillText(`accel  ${accel.toFixed(2)} m/s²`, 16, H - 6);
+
+    animFrame = requestAnimationFrame(frame);
+  }
+  animFrame = requestAnimationFrame(frame);
+}
+
+// ===== slide 6: violin — pentatonic + waveform =====
+const PENTATONIC = [196,220,246.94,293.66,329.63,392,440,493.88,587.33,659.25,783.99,880,987.77,1174.66,1318.51];
+const NOTE_NAMES = ['G3','A3','B3','D4','E4','G4','A4','B4','D5','E5','G5','A5','B5','D6','E6'];
+
+function drawViolin(cv, ctx) {
+  let t = 0;
+  let penY = 0.5;
+
+  function frame() {
+    const W = cv.getBoundingClientRect().width, H = cv.getBoundingClientRect().height;
+    ctx.fillStyle = 'rgba(6,6,9,0.15)'; ctx.fillRect(0, 0, W, H);
+    t += 0.018;
+
+    // animate pen Y slowly
+    penY = 0.5 + Math.sin(t * 0.3) * 0.38 + Math.sin(t * 0.07) * 0.12;
+    penY = Math.max(0.05, Math.min(0.95, penY));
+
+    const noteIdx = Math.round((1 - penY) * (PENTATONIC.length - 1));
+    const freq = PENTATONIC[noteIdx];
+    const noteName = NOTE_NAMES[noteIdx];
+
+    // waveform (simulated violin: harmonic-rich)
+    const waveY = H * 0.6, amp = (1 - penY * 0.5) * 45;
+    ctx.beginPath();
+    for (let x = 0; x < W; x++) {
+      const phase = (x / W) * TWO_PI * 5 - t * freq * 0.003;
+      const y = waveY
+        + Math.sin(phase) * amp
+        + Math.sin(phase * 2) * amp * 0.5
+        + Math.sin(phase * 3) * amp * 0.25
+        + Math.sin(phase * 4) * amp * 0.12;
+      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = `rgba(52,211,153,0.8)`;
+    ctx.lineWidth = 1.5; ctx.stroke();
+
+    // strings visualization (vertical)
+    const strX = W * 0.15;
+    PENTATONIC.forEach((f, i) => {
+      const sy = H * (1 - i / (PENTATONIC.length - 1)) * 0.85 + H * 0.075;
+      const active = i === noteIdx;
+      ctx.beginPath(); ctx.moveTo(strX - 20, sy); ctx.lineTo(strX + 20, sy);
+      ctx.strokeStyle = active ? '#34d399' : '#2a2a3a';
+      ctx.lineWidth = active ? 2 : 1; ctx.stroke();
+      if (active) {
+        ctx.fillStyle = '#34d399'; ctx.font = '10px DM Mono, monospace';
+        ctx.fillText(NOTE_NAMES[i], strX + 24, sy + 4);
+      }
+    });
+
+    // pen cursor
+    const pcx = W * 0.65, pcy = penY * H;
+    ctx.beginPath(); ctx.arc(pcx, pcy, 6, 0, TWO_PI);
+    ctx.fillStyle = '#ffd97a'; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(pcx, pcy); ctx.lineTo(strX + 18, H * (1 - noteIdx / (PENTATONIC.length - 1)) * 0.85 + H * 0.075);
+    ctx.strokeStyle = '#ffd97a40'; ctx.lineWidth = 1; ctx.stroke();
+
+    // label
+    ctx.fillStyle = '#34d399'; ctx.font = '22px DM Mono, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(noteName, W - 20, H - 30);
+    ctx.font = '11px DM Mono, monospace'; ctx.fillStyle = '#6e6e82';
+    ctx.fillText(`${freq.toFixed(2)} Hz`, W - 20, H - 14);
+    ctx.textAlign = 'left';
+
+    animFrame = requestAnimationFrame(frame);
+  }
+  ctx.fillStyle = '#060609'; ctx.fillRect(0, 0, cv.width, cv.height);
+  animFrame = requestAnimationFrame(frame);
+}
+
+// ===== slide 7 (CTA): everything — live painting simulation =====
+function drawAll(cv, ctx) {
+  let t = 0;
+  let penX = 0, penY = 0;
+  let hue = 170, bgHue = 30;
+  let brushR = 4;
+
+  function frame() {
+    const W = cv.getBoundingClientRect().width, H = cv.getBoundingClientRect().height;
+    // slow-fade background
+    const bgColor = `hsla(${bgHue.toFixed(0)},22%,10%,0.12)`;
+    ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
+    t += 0.015;
+    bgHue = lerp(bgHue, 30 + Math.sin(t * 0.05) * 100, 0.005);
+    hue = (hue + 0.3) % 360;
+    const rms = (Math.sin(t * 0.7) * 0.5 + 0.5);
+    brushR = lerp(brushR, 2 + rms * 22, 0.1);
+    const tX = Math.sin(t * 0.4) * 0.8 + Math.sin(t * 0.11) * 0.3;
+    const tY = Math.cos(t * 0.33) * 0.8 + Math.cos(t * 0.19) * 0.3;
+    penX = lerp(penX, W * (0.5 + tX * 0.4), 0.06);
+    penY = lerp(penY, H * (0.5 + tY * 0.4), 0.06);
+
+    ctx.beginPath();
+    ctx.arc(penX, penY, brushR, 0, TWO_PI);
+    const alpha = 0.4 + rms * 0.4;
+    ctx.fillStyle = `hsla(${hue.toFixed(0)},75%,60%,${alpha})`;
+    ctx.fill();
+
+    // occasional percussion ripple
+    if (Math.random() < 0.015) {
+      const rx = penX + rand(-80, 80), ry = penY + rand(-80, 80);
+      for (let r = 5; r < 35; r += 10) {
+        ctx.beginPath(); ctx.arc(rx, ry, r, 0, TWO_PI);
+        ctx.strokeStyle = `hsla(${hue},80%,70%,${0.3 - r/100})`;
+        ctx.lineWidth = 1; ctx.stroke();
+      }
+    }
+
+    animFrame = requestAnimationFrame(frame);
+  }
+  ctx.fillStyle = `hsl(${bgHue},22%,10%)`; ctx.fillRect(0, 0, cv.width, cv.height);
+  animFrame = requestAnimationFrame(frame);
+}
+
+// ===== init =====
+goTo(0);
+</script>
+</body>
+</html>
