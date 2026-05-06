@@ -1,0 +1,1005 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inside the Instrument — A Technology Tour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,200;0,400;0,700;1,200;1,400&family=Crimson+Pro:ital,wght@0,300;0,400;1,300&family=Fira+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07090f; --paper:#0c1018; --ink:#cac6bc; --muted:#6a6880;
+  --c1:#c8a84b; --c2:#4e9eff; --c3:#ff7c5a; --c4:#4dffaa;
+  --c5:#7ab8ff; --c6:#ff6b9d; --c7:#ffd93d;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:'Crimson Pro',Georgia,serif;
+  font-size:17px;line-height:1.65;overflow-x:hidden}
+
+/* ===== sidebar nav ===== */
+#sidenav{
+  position:fixed;right:1.5rem;top:50%;transform:translateY(-50%);
+  z-index:100;display:flex;flex-direction:column;gap:.7rem;align-items:center;
+}
+.nav-dot{
+  width:8px;height:8px;border-radius:50%;background:#1e2030;
+  border:1px solid #333;cursor:pointer;transition:all .25s;
+  position:relative;
+}
+.nav-dot.active{background:var(--active-color,#fff);border-color:var(--active-color,#fff);transform:scale(1.4)}
+.nav-dot::after{
+  content:attr(data-label);
+  position:absolute;right:18px;top:50%;transform:translateY(-50%);
+  font-family:'Fira Mono',monospace;font-size:.6rem;white-space:nowrap;
+  color:var(--muted);opacity:0;transition:opacity .2s;pointer-events:none;
+}
+.nav-dot:hover::after{opacity:1}
+
+/* ===== chapters ===== */
+.chapter{
+  min-height:100vh;display:grid;grid-template-columns:48% 52%;
+  position:relative;overflow:hidden;
+}
+.chapter-canvas{position:relative;min-height:55vw}
+.chapter-canvas canvas{position:absolute;inset:0;width:100%;height:100%}
+
+.chapter-text{
+  padding:5rem 4rem 4rem 3rem;display:flex;flex-direction:column;
+  justify-content:center;
+}
+.ch-num{font-family:'Fira Mono',monospace;font-size:.65rem;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:.8rem;opacity:.8}
+.ch-title{
+  font-family:'Fraunces',serif;font-size:clamp(2rem,3.5vw,2.8rem);
+  font-weight:200;line-height:1.1;margin-bottom:.4rem;letter-spacing:-.02em;
+  color:#e8e2d8;
+}
+.ch-sub{font-size:.95rem;color:var(--accent);font-family:'Fira Mono',monospace;
+  font-weight:400;margin-bottom:1.2rem;letter-spacing:.04em}
+.ch-body{font-size:1rem;line-height:1.7;color:#aaa8a0;font-weight:300;max-width:480px}
+.ch-body p{margin-bottom:.9rem}
+.ch-body b{color:#d8d4cc;font-weight:400}
+.ch-body em{font-style:italic;color:var(--accent)}
+.fact{
+  border-left:2px solid var(--accent);padding:.5rem .8rem;margin:1rem 0;
+  background:rgba(255,255,255,.02);font-size:.88rem;color:#b8b4ac;
+  font-family:'Fira Mono',monospace;font-size:.78rem;line-height:1.6;
+}
+
+/* ===== chapter background tones ===== */
+.ch1-bg{background:radial-gradient(ellipse at 20% 50%,#1a130300 0%,transparent 70%),var(--bg)}
+.ch2-bg{background:radial-gradient(ellipse at 20% 50%,#001a3a00 0%,transparent 70%),var(--bg)}
+.ch3-bg{background:var(--bg)}
+.ch4-bg{background:var(--bg)}
+.ch5-bg{background:var(--bg)}
+.ch6-bg{background:var(--bg)}
+.ch7-bg{background:var(--bg)}
+
+/* ===== header ===== */
+#hero{
+  min-height:100vh;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;text-align:center;
+  padding:3rem 1.5rem;position:relative;overflow:hidden;
+}
+#hero canvas{position:absolute;inset:0;width:100%;height:100%}
+#hero-text{position:relative;z-index:1;max-width:680px}
+#hero h1{
+  font-family:'Fraunces',serif;font-size:clamp(2.5rem,7vw,5.5rem);
+  font-weight:200;line-height:1;margin-bottom:.8rem;letter-spacing:-.03em;
+  color:#f0ece4;
+}
+#hero h1 em{font-style:italic;font-weight:200}
+#hero p{font-size:1.05rem;color:#888;font-weight:300;max-width:480px;margin:0 auto 2rem}
+.scroll-hint{font-family:'Fira Mono',monospace;font-size:.65rem;letter-spacing:.15em;
+  color:var(--muted);text-transform:uppercase;animation:bob 2s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
+
+@media(max-width:700px){
+  .chapter{grid-template-columns:1fr;grid-template-rows:50vh auto}
+  .chapter-text{padding:2.5rem 1.5rem}
+  .chapter-canvas{min-height:50vh}
+  #sidenav{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- sidebar -->
+<nav id="sidenav">
+  <div class="nav-dot" data-label="Intro" data-section="0" style="--active-color:#fff"></div>
+  <div class="nav-dot" data-label="Mechanical Gyroscope" data-section="1" style="--active-color:var(--c1)"></div>
+  <div class="nav-dot" data-label="MEMS Gyroscope" data-section="2" style="--active-color:var(--c2)"></div>
+  <div class="nav-dot" data-label="Pitch / Yaw / Roll" data-section="3" style="--active-color:var(--c3)"></div>
+  <div class="nav-dot" data-label="Accelerometer" data-section="4" style="--active-color:var(--c4)"></div>
+  <div class="nav-dot" data-label="Signal &amp; Moisture" data-section="5" style="--active-color:var(--c5)"></div>
+  <div class="nav-dot" data-label="Small Speaker Bass" data-section="6" style="--active-color:var(--c6)"></div>
+  <div class="nav-dot" data-label="Camera &amp; Color Vision" data-section="7" style="--active-color:var(--c7)"></div>
+</nav>
+
+<!-- ===== HERO ===== -->
+<section id="hero" data-section="0">
+  <canvas id="cv-hero"></canvas>
+  <div id="hero-text">
+    <h1>Inside the<br><em>Instrument</em></h1>
+    <p>Seven physical phenomena hidden in the phone you're holding — from spinning silicon to the color your eye can't see.</p>
+    <p class="scroll-hint">↓ scroll to begin</p>
+  </div>
+</section>
+
+<!-- ===== CH1: MECHANICAL GYROSCOPE ===== -->
+<section class="chapter ch1-bg" data-section="1">
+  <div class="chapter-canvas"><canvas id="cv-ch1"></canvas></div>
+  <div class="chapter-text" style="--accent:var(--c1)">
+    <div class="ch-num">Chapter 01 — Gyroscope</div>
+    <h2 class="ch-title">The spinning<br><em>mass that holds still</em></h2>
+    <div class="ch-sub">Conservation of angular momentum</div>
+    <div class="ch-body">
+      <p>Spin a top and try to push it over. Instead of falling, it <b>precesses</b> — the axis drifts sideways. This is angular momentum resisting change: a spinning mass wants to keep spinning in the same direction in space, regardless of what its housing does.</p>
+      <p>A mechanical gyroscope suspends its spinning rotor in <b>gimbal rings</b> — hinged frames that let the housing rotate freely around the rotor while the rotor stays pointed in its original direction. Mount one on a ship and it becomes a stable reference for navigation regardless of waves.</p>
+      <div class="fact">L = Iω — Angular momentum (L) equals moment of inertia (I) times angular velocity (ω). The larger I or ω, the harder it is to change L. Gyroscopes maximise I by placing mass at the rim.</div>
+      <p><b>Precession:</b> when you apply a torque trying to tilt the spin axis, the axis moves — but 90° away from where you pushed. The gyroscope "processes" the torque and outputs rotation perpendicular to both the input torque and the spin axis.</p>
+      <p>The problem with mechanical gyroscopes: they drift. Bearing friction, air resistance, manufacturing imperfections. A precision navigation-grade mechanical gyro drifts ~0.01°/hour. Acceptable for a missile; terrible for a pocket device.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== CH2: MEMS GYROSCOPE ===== -->
+<section class="chapter ch2-bg" data-section="2">
+  <div class="chapter-canvas"><canvas id="cv-ch2"></canvas></div>
+  <div class="chapter-text" style="--accent:var(--c2)">
+    <div class="ch-num">Chapter 02 — MEMS Gyroscope</div>
+    <h2 class="ch-title">The Coriolis<br><em>effect in silicon</em></h2>
+    <div class="ch-sub">No spinning parts. Just vibrating silicon.</div>
+    <div class="ch-body">
+      <p>Your phone's gyroscope has no spinning parts. The entire mechanism is etched into a <b>silicon wafer</b> thinner than a human hair and costs a fraction of a cent to manufacture.</p>
+      <p>A tiny <b>proof mass</b> is electrostatically driven to oscillate back and forth at its resonant frequency (~30,000 times per second). When the chip rotates, the <b>Coriolis force</b> deflects this oscillating mass perpendicular to both its motion and the rotation axis.</p>
+      <div class="fact">F = 2m(v × Ω) — Coriolis force. When a mass moving with velocity v is inside a rotating frame spinning at rate Ω, it experiences a force perpendicular to both. The cross-product (×) means the force is always 90° from the motion.</div>
+      <p><b>Capacitive plates</b> spaced ~1 micron apart detect this tiny deflection. As the mass shifts, the gap between plates changes, and capacitance changes with it. An ADC reads this as a digital rotation rate in degrees per second.</p>
+      <p>No bearings, no friction, no drift from mechanical wear. The phone has three separate MEMS gyroscopes oriented on perpendicular axes to measure pitch, roll, and yaw simultaneously. The whole assembly fits in a package 3mm × 3mm × 0.9mm.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== CH3: PITCH YAW ROLL ===== -->
+<section class="chapter" data-section="3">
+  <div class="chapter-canvas"><canvas id="cv-ch3"></canvas></div>
+  <div class="chapter-text" style="--accent:var(--c3)">
+    <div class="ch-num">Chapter 03 — Orientation</div>
+    <h2 class="ch-title">Pitch, Yaw,<br><em>Roll &amp; the Right Hand</em></h2>
+    <div class="ch-sub">Three axes of rotation, one rule to remember them</div>
+    <div class="ch-body">
+      <p>Any rigid body has exactly three independent ways to rotate. Aviation named them first; phones inherited the same convention.</p>
+      <p><b>Roll</b> is rotation around the axis pointing forward (nose-to-tail). An airplane banks into a turn. On your phone, tilting it sideways like a book is roll (γ, gamma in the sensor API).</p>
+      <p><b>Pitch</b> is rotation around the axis pointing to the side (wingtip-to-wingtip). A plane's nose rises or dips. On your phone, tilting the top toward or away from you is pitch (β, beta).</p>
+      <p><b>Yaw</b> is rotation around the vertical axis. A plane turns left or right while staying level. On your phone, rotating flat on a table changes yaw. The compass gives yaw (α, alpha).</p>
+      <div class="fact">Right-hand rule: point your right thumb along the positive axis. Your fingers naturally curl in the direction of positive rotation. Thumb forward → roll. Thumb right → pitch. Thumb up → yaw. All rotation directions follow from this single rule.</div>
+      <p>In the phone's <code style="font-family:'Fira Mono';font-size:.85em;color:var(--c3)">deviceorientation</code> event: alpha (0–360°) is yaw from magnetic north, beta (−180° to 180°) is front-back pitch, gamma (−90° to 90°) is side tilt. These three numbers completely describe the phone's orientation in space.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== CH4: ACCELEROMETER ===== -->
+<section class="chapter" data-section="4">
+  <div class="chapter-canvas"><canvas id="cv-ch4"></canvas></div>
+  <div class="chapter-text" style="--accent:var(--c4)">
+    <div class="ch-num">Chapter 04 — Accelerometer</div>
+    <h2 class="ch-title">A mass on<br><em>a spring in silicon</em></h2>
+    <div class="ch-sub">Not the speaker. Not even close.</div>
+    <div class="ch-body">
+      <p>A common misconception: that phones sense acceleration by tracking the speaker cone's position. Not so. The accelerometer is an entirely separate MEMS device, and it predates the modern phone by decades.</p>
+      <p>The mechanism: a tiny <b>proof mass</b> is suspended inside a silicon frame by flexible beams that act as springs. Under acceleration, the whole frame moves but the mass lags behind — Newton's second law: F = ma means the mass needs a force to accelerate, and that force comes from the spring flexing.</p>
+      <div class="fact">The displacement of the mass is proportional to the acceleration. Capacitive plates on either side of the mass measure the gap — smaller on one side, larger on the other. The differential capacitance gives a signed acceleration reading with microgravity precision.</div>
+      <p>When the phone sits still, the accelerometer reads approximately <b>9.8 m/s²</b> upward — Earth's gravity. The spring is deflected by gravitational force even with no motion. This is how the phone knows it's horizontal or vertical without moving: orientation changes which axis gravity pulls along.</p>
+      <p>The <code style="font-family:'Fira Mono';font-size:.85em;color:var(--c4)">accelerationIncludingGravity</code> value in the browser API includes this gravitational component. To get just motion acceleration, the operating system fuses gyroscope data to subtract gravity's component in each axis.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== CH5: CELLULAR & MOISTURE ===== -->
+<section class="chapter" data-section="5">
+  <div class="chapter-canvas"><canvas id="cv-ch5"></canvas></div>
+  <div class="chapter-text" style="--accent:var(--c5)">
+    <div class="ch-num">Chapter 05 — Propagation</div>
+    <h2 class="ch-title">How water<br><em>steals your signal</em></h2>
+    <div class="ch-sub">Molecular absorption and the frequency that rain kills</div>
+    <div class="ch-body">
+      <p>Water molecules are <b>electric dipoles</b>: oxygen is slightly negative, the two hydrogens slightly positive. When a radio wave's oscillating electric field passes through water vapor, these dipoles spin trying to align with the field — converting the wave's energy into rotational kinetic energy, then heat. The wave loses amplitude.</p>
+      <p>This matters very differently depending on frequency. At <b>700 MHz</b> (4G low band), the wavelength is ~43 cm — vastly larger than a raindrop (~2 mm). The drop is essentially invisible to the wave. Rain has almost no effect.</p>
+      <div class="fact">At 28 GHz (5G mmWave), wavelength ≈ 10 mm — comparable to a raindrop. Geometric interaction kicks in: drops scatter and absorb the wave. Heavy rain causes 10–15 dB/km of attenuation. This is why mmWave 5G cells are 100–200 m apart instead of kilometers.</div>
+      <p>At <b>60 GHz</b>, oxygen molecules themselves (O₂) resonate and absorb, limiting range to ~100 m regardless of weather — useful for short-range unlicensed point-to-point links precisely because it can't travel far enough to interfere with neighbors.</p>
+      <p>Water vapor in the atmosphere (humidity, not rain) absorbs at <b>22.235 GHz</b> and <b>183 GHz</b>. Even a clear day with high humidity measurably degrades frequencies near these bands. Rain is visible; humidity is invisible and omnipresent.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== CH6: SMALL SPEAKER BASS ===== -->
+<section class="chapter" data-section="6">
+  <div class="chapter-canvas"><canvas id="cv-ch6"></canvas></div>
+  <div class="chapter-text" style="--accent:var(--c6)">
+    <div class="ch-num">Chapter 06 — Acoustics</div>
+    <h2 class="ch-title">Bass from<br><em>something the size of a coin</em></h2>
+    <div class="ch-sub">Physical limits, DSP tricks, and your brain doing the work</div>
+    <div class="ch-body">
+      <p>A 40 Hz bass note has a wavelength of 8.6 meters. Your phone's speaker is ~3 cm across — roughly 1/280th of that wavelength. By conventional acoustics, it should produce essentially zero bass. And yet you hear it. Several things are happening at once.</p>
+      <p><b>Excursion and DSP control:</b> the voice coil travels much farther than any speaker of this size would have historically attempted. An onboard DSP monitors back-EMF (the voltage the moving coil generates) to track the cone's exact position and velocity, preventing over-excursion while maximizing the air moved per watt.</p>
+      <p><b>Acoustic tuning:</b> the phone body is a sealed or ported enclosure. The volume and port dimensions are tuned to shift the system's resonant frequency lower, extending bass response.</p>
+      <div class="fact">The missing fundamental: if you play 80 Hz + 120 Hz + 160 Hz simultaneously (harmonics 2, 3, and 4 of a 40 Hz note), the human auditory system reconstructs a strong perception of 40 Hz — even though no 40 Hz signal was produced. Modern phones deliberately generate these harmonics for bass notes using real-time harmonic synthesis. Your brain supplies the bass.</div>
+      <p>This psychoacoustic trick is not a bug or a cheat — it exploits the same pitch perception mechanism that lets you identify the fundamental of a piano note even when the lowest string on the instrument doesn't go that low.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== CH7: CAMERA & COLOR BLINDNESS ===== -->
+<section class="chapter" data-section="7">
+  <div class="chapter-canvas"><canvas id="cv-ch7"></canvas></div>
+  <div class="chapter-text" style="--accent:var(--c7)">
+    <div class="ch-num">Chapter 07 — Photoreception</div>
+    <h2 class="ch-title">How a camera<br><em>sees color differently</em></h2>
+    <div class="ch-sub">The Bayer filter, demosaicing, and accidental colorblindness aid</div>
+    <div class="ch-body">
+      <p>Silicon sensors are colorblind: they count photons but can't distinguish wavelength. Color sensing requires a physical filter. Modern cameras use a <b>Bayer pattern</b> — a 2×2 repeating grid of tiny color filters: one red (R), two green (G), one blue (B). More green than red or blue because human luminance sensitivity peaks in the green range.</p>
+      <p>Each pixel only measures one color. A process called <b>demosaicing</b> (also called interpolation) fills in the missing two channels for each pixel by borrowing from neighbors. This is an estimate, not a measurement — and the estimate introduces color artifacts at edges.</p>
+      <div class="fact">The camera's color matrix: sensor RGB does not match human RGB. The silicon's red-filter response peaks at a slightly different wavelength than the L cones in your eye. A 3×3 color correction matrix (the "color science" of the camera) transforms sensor values toward human-visible color — but the transformation is an approximation.</div>
+      <p><b>Color blindness and the camera error:</b> Ishihara test plates are designed so their number and background are isoluminant to red-green dichromats — same perceived brightness, different hue. The dichromat sees no contrast and can't read the number.</p>
+      <p>A camera's R and G channel spectral responses differ from human L and M cones. Colors that appear equal-luminance to a human dichromat may appear different-luminance to a camera. <b>Photographing an Ishihara plate and then viewing the photo can reveal numbers invisible to the naked eye</b> — the camera's systematic "error" creates luminance contrast where the human visual system has none. HDR processing, AI scene enhancement, and JPEG chroma subsampling can all amplify this effect.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+const TWO_PI = Math.PI * 2;
+function lerp(a,b,t){return a+(b-a)*t}
+function rand(lo,hi){return lo+Math.random()*(hi-lo)}
+
+// ===== canvas sizing =====
+function fitCanvas(cv){
+  const dpr=window.devicePixelRatio||1;
+  const r=cv.parentElement.getBoundingClientRect();
+  cv.width=Math.round(r.width*dpr);
+  cv.height=Math.round(r.height*dpr);
+  const ctx=cv.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {W:r.width,H:r.height,ctx};
+}
+
+// ===== IntersectionObserver to start/stop animations =====
+const active={};
+function observe(cv,fn){
+  const obs=new IntersectionObserver(entries=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){if(!active[cv.id]){fn(cv);active[cv.id]=true}}
+      else{active[cv.id]=false}
+    });
+  },{threshold:0.1});
+  obs.observe(cv);
+}
+
+// ===== HERO =====
+(function(){
+  const cv=document.getElementById('cv-hero');
+  const {W,H,ctx}=fitCanvas(cv);
+  const pts=Array.from({length:70},()=>({
+    x:rand(0,W),y:rand(0,H),vx:rand(-0.2,0.2),vy:rand(-0.2,0.2),
+    r:rand(0.5,2),alpha:rand(0.2,0.7)
+  }));
+  const colors=['#c8a84b','#4e9eff','#ff7c5a','#4dffaa','#7ab8ff','#ff6b9d','#ffd93d'];
+  pts.forEach((p,i)=>p.color=colors[i%colors.length]);
+  function frame(){
+    const {W:nW,H:nH,ctx:nc}=fitCanvas(cv);
+    nc.fillStyle='rgba(7,9,15,0.25)';nc.fillRect(0,0,nW,nH);
+    pts.forEach(p=>{
+      p.x+=p.vx;p.y+=p.vy;
+      if(p.x<0||p.x>nW)p.vx*=-1;if(p.y<0||p.y>nH)p.vy*=-1;
+      nc.beginPath();nc.arc(p.x,p.y,p.r,0,TWO_PI);
+      nc.fillStyle=p.color+Math.round(p.alpha*255).toString(16).padStart(2,'0');
+      nc.fill();
+    });
+    // connect nearby points
+    for(let i=0;i<pts.length;i++)for(let j=i+1;j<pts.length;j++){
+      const dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y;
+      const d=Math.hypot(dx,dy);
+      if(d<120){
+        nc.beginPath();nc.moveTo(pts[i].x,pts[i].y);nc.lineTo(pts[j].x,pts[j].y);
+        nc.strokeStyle=`rgba(80,80,120,${(1-d/120)*0.3})`;nc.lineWidth=0.5;nc.stroke();
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+  frame();
+})();
+
+// ===== CH1: Mechanical Gyroscope =====
+observe(document.getElementById('cv-ch1'),cv=>{
+  let t=0;
+  function frame(){
+    if(!active[cv.id])return;
+    const {W,H,ctx}=fitCanvas(cv);
+    ctx.fillStyle='#07090f';ctx.fillRect(0,0,W,H);
+    const cx=W*0.5,cy=H*0.5,r=Math.min(W,H)*0.32;
+    t+=0.008;
+
+    // outer gimbal
+    ctx.save();ctx.translate(cx,cy);ctx.rotate(Math.sin(t*0.7)*0.3);
+    ctx.strokeStyle='#c8a84b44';ctx.lineWidth=10;
+    ctx.beginPath();ctx.ellipse(0,0,r,r*0.3,0,0,TWO_PI);ctx.stroke();
+    ctx.strokeStyle='#c8a84b';ctx.lineWidth=2;
+    ctx.beginPath();ctx.ellipse(0,0,r,r*0.3,0,0,TWO_PI);ctx.stroke();
+    // gimbal axle marks
+    ctx.fillStyle='#c8a84b';
+    [-1,1].forEach(s=>{ctx.beginPath();ctx.arc(r*s,0,5,0,TWO_PI);ctx.fill()});
+
+    // middle gimbal
+    ctx.rotate(Math.sin(t*0.5)*0.2);
+    const r2=r*0.72;
+    ctx.strokeStyle='#c8a84b33';ctx.lineWidth=8;
+    ctx.beginPath();ctx.ellipse(0,0,r2,r2*0.3,0,0,TWO_PI);ctx.stroke();
+    ctx.strokeStyle='#c8a84b99';ctx.lineWidth=2;
+    ctx.beginPath();ctx.ellipse(0,0,r2,r2*0.3,0,0,TWO_PI);ctx.stroke();
+    [-1,1].forEach(s=>{
+      ctx.beginPath();ctx.arc(0,r2*0.3*s,4,0,TWO_PI);
+      ctx.fillStyle='#c8a84b99';ctx.fill()});
+
+    // spinning rotor (inner wheel)
+    ctx.save();ctx.rotate(t*3);
+    const r3=r*0.45;
+    const wGrad=ctx.createRadialGradient(0,0,r3*0.6,0,0,r3);
+    wGrad.addColorStop(0,'#2a1e08');wGrad.addColorStop(1,'#c8a84b22');
+    ctx.fillStyle=wGrad;
+    ctx.beginPath();ctx.ellipse(0,0,r3,r3*0.22,0,0,TWO_PI);ctx.fill();
+    ctx.strokeStyle='#c8a84b';ctx.lineWidth=3;
+    ctx.beginPath();ctx.ellipse(0,0,r3,r3*0.22,0,0,TWO_PI);ctx.stroke();
+    // spokes
+    for(let s=0;s<8;s++){
+      ctx.beginPath();ctx.moveTo(0,0);
+      const a=s/8*TWO_PI;
+      ctx.lineTo(Math.cos(a)*r3,Math.sin(a)*r3*0.22);
+      ctx.strokeStyle='#c8a84b66';ctx.lineWidth=1;ctx.stroke();
+    }
+    ctx.restore();
+
+    // angular momentum arrow
+    const arrowL=r*0.65;
+    ctx.beginPath();ctx.moveTo(0,-arrowL);ctx.lineTo(0,arrowL);
+    ctx.strokeStyle='#c8a84b';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();ctx.moveTo(-5,-arrowL+10);ctx.lineTo(0,-arrowL);ctx.lineTo(5,-arrowL+10);
+    ctx.strokeStyle='#c8a84b';ctx.stroke();
+    ctx.fillStyle='#c8a84b';ctx.font='10px Fira Mono, monospace';
+    ctx.textAlign='center';ctx.fillText('L',8,-arrowL-8);
+
+    ctx.restore();
+
+    // precession arrow (offset 90°)
+    const preAngle=t*0.5;
+    ctx.save();ctx.translate(cx,cy);
+    ctx.strokeStyle='#ff8c00aa';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.arc(0,0,r*1.15,preAngle,preAngle+Math.PI*0.4);ctx.stroke();
+    ctx.setLineDash([]);
+    const ea=preAngle+Math.PI*0.4;
+    ctx.fillStyle='#ff8c00';ctx.font='9px Fira Mono';ctx.textAlign='left';
+    ctx.fillText('precession',r*1.15*Math.cos(ea)+5,r*1.15*Math.sin(ea));
+    ctx.restore();
+
+    // label
+    ctx.fillStyle='#6a6880';ctx.font='9px Fira Mono, monospace';ctx.textAlign='left';
+    ctx.fillText('nested gimbal rings',10,H-22);
+    ctx.fillText('mechanical gyroscope — schematic',10,H-10);
+
+    requestAnimationFrame(frame);
+  }
+  frame();
+});
+
+// ===== CH2: MEMS Gyroscope =====
+observe(document.getElementById('cv-ch2'),cv=>{
+  let t=0;let rotation=0;
+  function frame(){
+    if(!active[cv.id])return;
+    const {W,H,ctx}=fitCanvas(cv);
+    ctx.fillStyle='#07090f';ctx.fillRect(0,0,W,H);
+    t+=0.04;rotation+=0.003;
+
+    const cx=W*0.5,cy=H*0.5;
+    const scale=Math.min(W,H)*0.0025;
+
+    // grid bg (silicon chip)
+    ctx.strokeStyle='#0e1828';ctx.lineWidth=0.5;
+    const gs=20;
+    for(let x=0;x<W;x+=gs){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}
+    for(let y=0;y<H;y+=gs){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+
+    // outer silicon frame
+    const fw=W*0.6,fh=H*0.55;
+    const fx=cx-fw/2,fy=cy-fh/2;
+    ctx.strokeStyle='#4e9eff33';ctx.lineWidth=8;ctx.strokeRect(fx,fy,fw,fh);
+    ctx.strokeStyle='#4e9eff';ctx.lineWidth=1.5;ctx.strokeRect(fx,fy,fw,fh);
+    ctx.fillStyle='#4e9eff22';ctx.fillRect(fx,fy,fw,fh);
+
+    // drive tines (vibrating left-right)
+    const vib=Math.sin(t)*18;
+    const tineH=fh*0.55,tineW=W*0.06;
+    [-1,1].forEach(side=>{
+      const tx=cx+side*(fw*0.25)+vib*side;
+      const ty=cy-tineH/2;
+      ctx.fillStyle='#4e9eff44';ctx.fillRect(tx-tineW/2,ty,tineW,tineH);
+      ctx.strokeStyle='#4e9eff';ctx.lineWidth=1;ctx.strokeRect(tx-tineW/2,ty,tineW,tineH);
+      // drive arrows
+      ctx.fillStyle='#4e9effaa';ctx.font='10px Fira Mono';ctx.textAlign='center';
+      ctx.fillText(side>0?'⟶':'⟵',tx,ty-8);
+    });
+
+    // Coriolis deflection (sense direction — vertical)
+    const coriolis=Math.sin(t+Math.PI/2)*rotation*1800;
+    // proof mass center
+    const pmSize=W*0.1;
+    ctx.fillStyle='#4e9eff33';ctx.fillRect(cx-pmSize/2,cy-pmSize/2+coriolis,pmSize,pmSize);
+    ctx.strokeStyle='#4e9eff';ctx.lineWidth=2;ctx.strokeRect(cx-pmSize/2,cy-pmSize/2+coriolis,pmSize,pmSize);
+
+    // capacitive plates (top/bottom of proof mass)
+    const plateW=W*0.12,plateH=6,gap=H*0.12;
+    [-1,1].forEach(side=>{
+      const py=cy+side*gap;
+      ctx.fillStyle='#4e9effcc';ctx.fillRect(cx-plateW/2,py-plateH/2,plateW,plateH);
+      // gap indicator
+      const actualGap=Math.abs((cy+side*gap)-(cy+coriolis+side*pmSize/2));
+      ctx.strokeStyle=`rgba(78,158,255,${0.3+Math.abs(coriolis/30)*0.5})`;
+      ctx.lineWidth=0.5;ctx.setLineDash([2,2]);
+      ctx.beginPath();ctx.moveTo(cx-plateW/2,py);ctx.lineTo(cx-plateW/2,cy+coriolis+side*pmSize/2);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx+plateW/2,py);ctx.lineTo(cx+plateW/2,cy+coriolis+side*pmSize/2);ctx.stroke();
+      ctx.setLineDash([]);
+    });
+
+    // rotation indicator
+    ctx.save();ctx.translate(W*0.15,H*0.2);
+    ctx.strokeStyle='#4e9effaa';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(0,0,20,0,TWO_PI*Math.min(1,rotation*50));ctx.stroke();
+    const na=rotation*50*TWO_PI;
+    ctx.beginPath();ctx.moveTo(Math.cos(na)*15,Math.sin(na)*15);
+    ctx.lineTo(Math.cos(na)*22,Math.sin(na)*22);ctx.stroke();
+    ctx.fillStyle='#4e9eff';ctx.font='9px Fira Mono';ctx.textAlign='center';
+    ctx.fillText('Ω',0,4);ctx.fillText('rotation',0,30);
+    ctx.restore();
+
+    // Coriolis label
+    if(Math.abs(coriolis)>2){
+      ctx.fillStyle='#ff7c5a';ctx.font='9px Fira Mono';ctx.textAlign='left';
+      ctx.fillText(`Coriolis: ${coriolis.toFixed(1)}px`,W*0.62,cy+(coriolis>0?20:-10));
+    }
+
+    // scale
+    ctx.fillStyle='#6a6880';ctx.font='9px Fira Mono';ctx.textAlign='left';
+    ctx.fillText('scale ~200 μm',10,H-22);ctx.fillText('MEMS gyroscope — cross-section view',10,H-10);
+
+    requestAnimationFrame(frame);
+  }
+  frame();
+});
+
+// ===== CH3: Pitch/Yaw/Roll + Right Hand Rule =====
+observe(document.getElementById('cv-ch3'),cv=>{
+  let t=0;let mode=0;// 0=roll 1=pitch 2=yaw
+  setInterval(()=>{mode=(mode+1)%3},3000);
+  const modeColors=['#ff7c5a','#ffe66d','#4ecdc4'];
+  const modeNames=['ROLL','PITCH','YAW'];
+  const modeDesc=['rotation around forward axis (X)','rotation around side axis (Y)','rotation around vertical axis (Z)'];
+
+  function drawPlane(ctx,cx,cy,scale,roll,pitch,yaw){
+    ctx.save();ctx.translate(cx,cy);
+    ctx.rotate(yaw);
+    // fuselage
+    ctx.fillStyle='#2a2a3a';
+    ctx.beginPath();ctx.ellipse(0,0,scale*0.5,scale*0.12,pitch,0,TWO_PI);ctx.fill();
+    // wings
+    ctx.strokeStyle='#6a6880';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(-scale*0.55,scale*0.04*Math.cos(roll));
+    ctx.lineTo(scale*0.55,-scale*0.04*Math.cos(roll));ctx.stroke();
+    // tail
+    ctx.beginPath();ctx.moveTo(-scale*0.45,0);ctx.lineTo(-scale*0.55,-scale*0.12);ctx.stroke();
+    // nose
+    ctx.fillStyle='#888';ctx.beginPath();ctx.arc(scale*0.5,0,5,0,TWO_PI);ctx.fill();
+    ctx.restore();
+  }
+
+  function frame(){
+    if(!active[cv.id])return;
+    const {W,H,ctx}=fitCanvas(cv);
+    ctx.fillStyle='#07090f';ctx.fillRect(0,0,W,H);
+    t+=0.025;
+    const color=modeColors[mode];
+    const s=Math.min(W,H)*0.22;
+    const cx=W*0.5,cy=H*0.38;
+
+    const roll=mode===0?Math.sin(t)*0.5:0;
+    const pitch=mode===1?Math.sin(t)*0.3:0;
+    const yaw=mode===2?t*0.3:0;
+    drawPlane(ctx,cx,cy,s,roll,pitch,yaw);
+
+    // axes
+    const axLen=s*1.1;
+    // X (forward) = red
+    ctx.save();ctx.translate(cx,cy);
+    ctx.strokeStyle=mode===0?'#ff7c5a':'#ff7c5a44';ctx.lineWidth=mode===0?2:1;
+    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(axLen,0);ctx.stroke();
+    ctx.fillStyle=mode===0?'#ff7c5a':'#ff7c5a44';ctx.font='11px Fira Mono';ctx.textAlign='left';
+    ctx.fillText('X (roll)',axLen+4,-2);
+    // Y (up)
+    ctx.strokeStyle=mode===1?'#ffe66d':'#ffe66d44';ctx.lineWidth=mode===1?2:1;
+    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-axLen);ctx.stroke();
+    ctx.fillStyle=mode===1?'#ffe66d':'#ffe66d44';ctx.textAlign='center';
+    ctx.fillText('Y (pitch)',0,-axLen-8);
+    // Z (vertical)
+    ctx.strokeStyle=mode===2?'#4ecdc4':'#4ecdc444';ctx.lineWidth=mode===2?2:1;
+    ctx.beginPath();ctx.moveTo(0,0);
+    ctx.lineTo(-axLen*0.4,axLen*0.4);ctx.stroke();
+    ctx.fillStyle=mode===2?'#4ecdc4':'#4ecdc444';ctx.textAlign='right';
+    ctx.fillText('Z (yaw)',-axLen*0.4-4,axLen*0.4+4);
+    ctx.restore();
+
+    // rotation arc for active axis
+    ctx.save();ctx.translate(cx,cy);
+    ctx.strokeStyle=color;ctx.lineWidth=2;ctx.setLineDash([]);
+    if(mode===0){ctx.beginPath();ctx.arc(axLen*0.6,0,20,0,t%TWO_PI);ctx.stroke()}
+    if(mode===1){ctx.beginPath();ctx.arc(0,-axLen*0.6,20,-Math.PI/2,t%TWO_PI-Math.PI/2);ctx.stroke()}
+    if(mode===2){ctx.beginPath();ctx.arc(0,0,70,0,t%TWO_PI);ctx.stroke()}
+    ctx.restore();
+
+    // RIGHT HAND RULE illustration
+    const hx=W*0.15,hy=H*0.72,hr=30;
+    ctx.save();ctx.translate(hx,hy);
+    // palm
+    ctx.fillStyle='#2a2236';ctx.beginPath();ctx.ellipse(0,0,hr,hr*0.7,0,0,TWO_PI);ctx.fill();
+    ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.stroke();
+    // thumb (direction of axis)
+    const thumbDir=mode===0?[1,0]:mode===1?[0,-1]:[0,-1];
+    ctx.strokeStyle=color;ctx.lineWidth=3;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(thumbDir[0]*hr*1.5,thumbDir[1]*hr*1.5);ctx.stroke();
+    // arrowhead on thumb
+    const ta=Math.atan2(thumbDir[1],thumbDir[0]);
+    ctx.beginPath();
+    ctx.moveTo(thumbDir[0]*hr*1.5,thumbDir[1]*hr*1.5);
+    ctx.lineTo(thumbDir[0]*hr*1.5-12*Math.cos(ta-0.4),thumbDir[1]*hr*1.5-12*Math.sin(ta-0.4));
+    ctx.lineTo(thumbDir[0]*hr*1.5-12*Math.cos(ta+0.4),thumbDir[1]*hr*1.5-12*Math.sin(ta+0.4));
+    ctx.fillStyle=color;ctx.fill();
+    // curl indicators
+    ctx.setLineDash([2,2]);
+    ctx.beginPath();ctx.arc(0,0,hr*0.5,0,Math.PI*1.5);ctx.strokeStyle=color+'99';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+    ctx.fillStyle=color;ctx.font='bold 10px Fira Mono';ctx.textAlign='center';
+    ctx.fillText('right-hand rule',hx,hy+hr+16);
+    ctx.fillText('thumb → axis',hx,hy+hr+28);
+    ctx.fillText('fingers → +rotation',hx,hy+hr+40);
+
+    // mode label
+    ctx.fillStyle=color;ctx.font='bold 14px Fira Mono';ctx.textAlign='center';
+    ctx.fillText(modeNames[mode],W*0.65,H*0.7);
+    ctx.fillStyle='#888';ctx.font='10px Fira Mono';
+    ctx.fillText(modeDesc[mode],W*0.65,H*0.7+18);
+
+    requestAnimationFrame(frame);
+  }
+  frame();
+});
+
+// ===== CH4: Accelerometer =====
+observe(document.getElementById('cv-ch4'),cv=>{
+  let t=0;let joltX=0,joltV=0;
+  function jolt(){joltV=-15;setTimeout(jolt,rand(2000,4000))}
+  setTimeout(jolt,1000);
+  function frame(){
+    if(!active[cv.id])return;
+    const {W,H,ctx}=fitCanvas(cv);
+    ctx.fillStyle='#07090f';ctx.fillRect(0,0,W,H);
+    t+=0.02;
+    joltX+=joltV;joltV*=0.88;joltX*=0.88;
+
+    const cx=W*0.5,cy=H*0.5;
+    const fw=W*0.55,fh=H*0.5;
+
+    // silicon frame
+    const fx=cx-fw/2,fy=cy-fh/2;
+    ctx.fillStyle='#0a1a0d';ctx.fillRect(fx,fy,fw,fh);
+    ctx.strokeStyle='#4dffaa';ctx.lineWidth=1.5;ctx.strokeRect(fx,fy,fw,fh);
+    ctx.fillStyle='#4dffaa22';ctx.fillRect(fx,fy,fw,fh);
+
+    // proof mass (lags behind frame)
+    const pmW=fw*0.32,pmH=fh*0.42;
+    const pmX=cx-pmW/2-joltX*0.35; // mass lags
+    const pmY=cy-pmH/2;
+    ctx.fillStyle='#0d2015';ctx.fillRect(pmX,pmY,pmW,pmH);
+    ctx.strokeStyle='#4dffaa';ctx.lineWidth=2;ctx.strokeRect(pmX,pmY,pmW,pmH);
+
+    // spring flexures
+    [-1,1].forEach(side=>{
+      const springX=side===1?pmX+pmW:pmX;
+      const attachX=side===1?cx+fw/2:cx-fw/2;
+      ctx.strokeStyle='#4dffaa66';ctx.lineWidth=1;
+      const segs=5;
+      ctx.beginPath();
+      for(let i=0;i<=segs;i++){
+        const sx=lerp(springX,attachX,i/segs);
+        const sy=cy+(i%2===0?8:-8)*side;
+        i===0?ctx.moveTo(sx,sy):ctx.lineTo(sx,sy);
+      }
+      ctx.stroke();
+    });
+
+    // capacitor plates
+    const plateTh=8,plateH=pmH*0.7;
+    const gapL=pmX-(cx-fw/2);
+    const gapR=(cx+fw/2)-(pmX+pmW);
+
+    [-1,1].forEach(side=>{
+      const plateX=side===1?cx+fw/2-plateTh:cx-fw/2;
+      const plateColor=side===1?
+        `rgba(77,255,170,${0.3+Math.abs(gapR-80)/200})`:
+        `rgba(77,255,170,${0.3+Math.abs(gapL-80)/200})`;
+      ctx.fillStyle=plateColor;ctx.fillRect(plateX,cy-plateH/2,plateTh,plateH);
+
+      // gap labels
+      const gap=side===1?gapR:gapL;
+      ctx.fillStyle='#4dffaa88';ctx.font='9px Fira Mono';ctx.textAlign='center';
+      const labelX=side===1?cx+fw/2-plateTh/2:cx-fw/2+plateTh/2;
+      ctx.fillText(`${gap.toFixed(0)}`,labelX,cy+plateH/2+14);
+    });
+
+    // capacitance delta label
+    const delta=((joltX*0.35)/10).toFixed(2);
+    ctx.fillStyle='#4dffaa';ctx.font='bold 12px Fira Mono';ctx.textAlign='center';
+    ctx.fillText(`ΔC = ${delta} fF → ${(parseFloat(delta)*9.8/10).toFixed(2)} m/s²`,cx,H*0.82);
+
+    // jolt arrow on frame
+    if(Math.abs(joltV)>0.5){
+      ctx.fillStyle='#ff7c5a';ctx.font='11px Fira Mono';ctx.textAlign='center';
+      ctx.fillText('⟶ acceleration',cx,H*0.88);
+    }else{
+      ctx.fillStyle='#4dffaa44';ctx.font='10px Fira Mono';ctx.textAlign='center';
+      ctx.fillText('↓ gravity  9.8 m/s²',cx,H*0.88);
+    }
+
+    ctx.fillStyle='#6a6880';ctx.font='9px Fira Mono';ctx.textAlign='left';
+    ctx.fillText('proof mass + capacitive sense plates — schematic',10,H-10);
+
+    requestAnimationFrame(frame);
+  }
+  frame();
+});
+
+// ===== CH5: Cellular & Moisture =====
+observe(document.getElementById('cv-ch5'),cv=>{
+  let t=0;
+  const raindrops=Array.from({length:18},()=>({x:rand(0,1),y:rand(0,1),r:rand(1,3)}));
+  function frame(){
+    if(!active[cv.id])return;
+    const {W,H,ctx}=fitCanvas(cv);
+    ctx.fillStyle='#07090f';ctx.fillRect(0,0,W,H);
+    t+=0.04;
+
+    // ---- frequency spectrum ----
+    const specX=W*0.1,specY=H*0.72,specW=W*0.8,specH=H*0.16;
+    ctx.strokeStyle='#2a2a3a';ctx.lineWidth=1;
+    ctx.strokeRect(specX,specY,specW,specH);
+    ctx.fillStyle='#2a2a3a22';ctx.fillRect(specX,specY,specW,specH);
+
+    // absorption curve (log-scale sketch)
+    ctx.beginPath();
+    for(let i=0;i<=200;i++){
+      const x=specX+i/200*specW;
+      const f=0.5+i/200*80; // GHz
+      // peaks: 22 GHz water vapor, 60 GHz O2
+      let atten=0.05;
+      atten+=0.6*Math.exp(-Math.pow((f-22)/2,2));
+      atten+=0.9*Math.exp(-Math.pow((f-60)/3,2));
+      atten+=0.3*Math.exp(-Math.pow((f-183)/8,2));
+      const y=specY+specH*(1-Math.min(0.95,atten));
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle='#7ab8ff';ctx.lineWidth=1.5;ctx.stroke();
+
+    // frequency band markers
+    const bands=[
+      {f:0.9,label:'700MHz\n4G',color:'#4dffaa'},
+      {f:2.1,label:'2.1GHz\n4G',color:'#ffe66d'},
+      {f:28,label:'28GHz\n5G mmW',color:'#ff7c5a'},
+      {f:60,label:'60GHz\nO₂ abs',color:'#ff4444'},
+    ];
+    bands.forEach(b=>{
+      const bx=specX+(b.f-0.5)/80*specW;
+      ctx.strokeStyle=b.color+'aa';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.moveTo(bx,specY);ctx.lineTo(bx,specY+specH+4);ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle=b.color;ctx.font='8px Fira Mono';ctx.textAlign='center';
+      const lines=b.label.split('\n');
+      lines.forEach((l,li)=>ctx.fillText(l,bx,specY+specH+14+li*10));
+    });
+
+    ctx.fillStyle='#7ab8ff';ctx.font='9px Fira Mono';ctx.textAlign='left';
+    ctx.fillText('atmospheric attenuation (dB/km) →',specX,specY-6);
+    ctx.fillStyle='#6a6880';ctx.fillText('frequency (GHz) →',specX+specW-100,specY+specH+38);
+
+    // ---- wave propagation scene ----
+    const waveY=H*0.35;
+    const absorbX=W*0.55;
+
+    // incoming wave (full amplitude)
+    for(let x=0;x<absorbX;x+=1){
+      const phase=(x/W)*TWO_PI*8-t*4;
+      const amp=H*0.08;
+      if(x===0)ctx.beginPath();
+      ctx.strokeStyle=`rgba(122,184,255,0.7)`;ctx.lineWidth=2;
+      if(x===0){ctx.beginPath();ctx.moveTo(x,waveY+Math.sin(phase)*amp)}
+      else ctx.lineTo(x,waveY+Math.sin(phase)*amp);
+    }
+    ctx.stroke();
+
+    // attenuated wave after water
+    for(let x=absorbX;x<W*0.92;x+=1){
+      const phase=(x/W)*TWO_PI*8-t*4;
+      const decay=Math.exp(-(x-absorbX)/(W*0.25));
+      const amp=H*0.08*decay;
+      if(x===absorbX){ctx.beginPath();ctx.moveTo(x,waveY+Math.sin(phase)*amp)}
+      else ctx.lineTo(x,waveY+Math.sin(phase)*amp);
+    }
+    ctx.strokeStyle='rgba(122,184,255,0.3)';ctx.stroke();
+
+    // water molecule
+    const mx=absorbX,my=waveY;
+    ctx.fillStyle='#ff4444aa';ctx.beginPath();ctx.arc(mx,my,12,0,TWO_PI);ctx.fill();
+    ctx.strokeStyle='#ff4444';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.fillStyle='#fff';ctx.font='bold 10px serif';ctx.textAlign='center';
+    ctx.fillText('O',mx,my+4);
+    // H atoms
+    [[-16,12],[16,12]].forEach(([dx,dy])=>{
+      ctx.fillStyle='#aaddff88';ctx.beginPath();ctx.arc(mx+dx,my+dy,6,0,TWO_PI);ctx.fill();
+      ctx.fillStyle='#ccc';ctx.font='7px serif';ctx.fillText('H',mx+dx,my+dy+3);
+    });
+    ctx.fillStyle='#ff4444';ctx.font='9px Fira Mono';ctx.textAlign='center';
+    ctx.fillText('H₂O dipole',mx,my-20);
+    ctx.fillText('absorbs energy',mx,my-10);
+
+    // raindrops
+    raindrops.forEach(d=>{
+      d.y=(d.y+0.003)%1;
+      ctx.fillStyle='#7ab8ff44';ctx.beginPath();
+      ctx.ellipse(d.x*W*0.4+W*0.05,d.y*H*0.5,d.r,d.r*2.5,0.2,0,TWO_PI);ctx.fill();
+    });
+
+    requestAnimationFrame(frame);
+  }
+  frame();
+});
+
+// ===== CH6: Small Speaker & Bass =====
+observe(document.getElementById('cv-ch6'),cv=>{
+  let t=0;
+  const harmonics=[2,3,4]; // missing fundamental = 1
+  function frame(){
+    if(!active[cv.id])return;
+    const {W,H,ctx}=fitCanvas(cv);
+    ctx.fillStyle='#07090f';ctx.fillRect(0,0,W,H);
+    t+=0.03;
+
+    // speaker cross-section
+    const sx=W*0.35,sy=H*0.2,sH=H*0.45;
+    const coneAmp=12*Math.sin(t*2);
+
+    // enclosure
+    ctx.fillStyle='#1a0a12';ctx.strokeStyle='#ff6b9d';ctx.lineWidth=1.5;
+    ctx.fillRect(sx-W*0.15,sy,W*0.3,sH);ctx.strokeRect(sx-W*0.15,sy,W*0.3,sH);
+
+    // cone (cross-section)
+    ctx.fillStyle='#2a0a18';ctx.strokeStyle='#ff6b9daa';ctx.lineWidth=1.5;
+    ctx.beginPath();
+    ctx.moveTo(sx-W*0.04,sy+20+coneAmp);
+    ctx.lineTo(sx-W*0.13,sy+sH*0.55);
+    ctx.lineTo(sx+W*0.13,sy+sH*0.55);
+    ctx.lineTo(sx+W*0.04,sy+20+coneAmp);
+    ctx.closePath();ctx.fill();ctx.stroke();
+
+    // voice coil
+    ctx.fillStyle='#ff6b9d88';ctx.strokeStyle='#ff6b9d';
+    ctx.fillRect(sx-W*0.01,sy+sH*0.55,W*0.02,H*0.06);
+    ctx.strokeRect(sx-W*0.01,sy+sH*0.55,W*0.02,H*0.06);
+
+    // port hole (bass reflex)
+    const portX=sx-W*0.15,portY=sy+sH*0.75;
+    ctx.fillStyle='#3d0020';ctx.fillRect(portX,portY,W*0.06,H*0.035);
+    ctx.strokeStyle='#ff6b9d';ctx.lineWidth=1;ctx.strokeRect(portX,portY,W*0.06,H*0.035);
+    // port air movement
+    const portAmp=8*Math.sin(t*2+Math.PI);
+    ctx.strokeStyle='#ff6b9d44';ctx.lineWidth=0.5;
+    for(let i=1;i<=3;i++){
+      ctx.beginPath();
+      ctx.arc(portX-8-i*portAmp,portY+H*0.018,i*3,Math.PI*0.5,Math.PI*1.5);
+      ctx.stroke();
+    }
+    ctx.fillStyle='#ff6b9d';ctx.font='8px Fira Mono';ctx.textAlign='left';
+    ctx.fillText('bass port',portX+W*0.07,portY+H*0.02);
+
+    // wavelength comparison
+    const wY=H*0.82;
+    const waveLen40Hz=8600; // mm
+    const displayScale=W*0.8/waveLen40Hz;
+    // 40 Hz wavelength (partial - way too big to show)
+    ctx.strokeStyle='#ff6b9d33';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.moveTo(W*0.1,wY);ctx.lineTo(W*0.9,wY);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ff6b9d44';ctx.font='9px Fira Mono';ctx.textAlign='center';
+    ctx.fillText(`← 40 Hz wavelength = 8.6 meters (way off screen) →`,W*0.5,wY-6);
+
+    // speaker size marker
+    const spkMM=35; // typical phone speaker mm
+    const spkPx=spkMM*displayScale;
+    ctx.strokeStyle='#ff6b9d';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(W*0.1,wY+12);ctx.lineTo(W*0.1+spkPx,wY+12);ctx.stroke();
+    ctx.fillStyle='#ff6b9d';ctx.font='9px Fira Mono';ctx.textAlign='left';
+    ctx.fillText(`speaker: ${spkMM}mm`,W*0.1,wY+24);
+
+    // harmonic synthesis
+    const hY=H*0.88;
+    [1,2,3,4].forEach((h,i)=>{
+      const hx=W*(0.15+i*0.18);
+      const present=harmonics.includes(h);
+      const barH=H*0.06*Math.abs(Math.sin(t*h));
+      ctx.fillStyle=present?'#ff6b9d':'#ff6b9d22';
+      ctx.fillRect(hx-10,hY-barH,20,barH);
+      ctx.fillStyle=present?'#ff6b9d':'#555';
+      ctx.font='8px Fira Mono';ctx.textAlign='center';
+      ctx.fillText(h===1?'f₀\n(missing)':''+h+'f',hx,hY+12);
+    });
+    ctx.fillStyle='#ff6b9d';ctx.font='9px Fira Mono';ctx.textAlign='left';
+    ctx.fillText('missing fundamental → brain hears f₀',W*0.1,hY-H*0.07);
+
+    ctx.fillStyle='#6a6880';ctx.font='9px Fira Mono';ctx.textAlign='left';
+    ctx.fillText('bass-reflex enclosure cross-section',10,H-10);
+
+    requestAnimationFrame(frame);
+  }
+  frame();
+});
+
+// ===== CH7: Camera & Color Blindness =====
+observe(document.getElementById('cv-ch7'),cv=>{
+  let t=0;let showCamera=false;
+  setInterval(()=>{showCamera=!showCamera},3500);
+
+  // Ishihara-inspired plate: dots with embedded number-like region
+  // Normal: see a "3" shape in reddish dots against greenish background
+  // Color-blind (simulated): same luminance, can't see it
+  // Camera view: slightly different luminance → see it
+  const dots=[];
+  const centerR=70;
+  // Generate dots in circle
+  for(let i=0;i<400;i++){
+    const angle=rand(0,TWO_PI),dist=rand(0,1);
+    const x=Math.sqrt(dist)*Math.cos(angle)*centerR;
+    const y=Math.sqrt(dist)*Math.sin(angle)*centerR;
+    const r=rand(3,8);
+    // Is this dot inside the "3" shape?
+    // Simple "3": two arcs on the right side
+    const inNumber=(
+      (Math.hypot(x-12,y+22)<22&&x>0) ||
+      (Math.hypot(x-12,y-22)<22&&x>0)
+    )&&Math.abs(y)<44&&x>-5;
+    dots.push({x,y,r,inNumber});
+  }
+
+  function frame(){
+    if(!active[cv.id])return;
+    const {W,H,ctx}=fitCanvas(cv);
+    ctx.fillStyle='#07090f';ctx.fillRect(0,0,W,H);
+    t+=0.015;
+
+    const px=W*0.38,py=H*0.42;
+
+    // ---- Bayer pattern (top) ----
+    const bayerX=W*0.05,bayerY=H*0.04,cell=18,cols=8,rows=5;
+    const bayerColors=[['#ff3333','#22aa22'],['#22aa22','#3333ff']];
+    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+      const bc=bayerColors[r%2][c%2];
+      ctx.fillStyle=bc+'99';
+      ctx.fillRect(bayerX+c*cell,bayerY+r*cell,cell,cell);
+      ctx.strokeStyle='#ffffff22';ctx.lineWidth=0.5;
+      ctx.strokeRect(bayerX+c*cell,bayerY+r*cell,cell,cell);
+      if(r===0){
+        ctx.fillStyle='#fff';ctx.font='7px Fira Mono';ctx.textAlign='center';
+        ctx.fillText(['R','G','G','B','R','G','G','B'][c],bayerX+c*cell+cell/2,bayerY-3);
+      }
+    }
+    ctx.fillStyle='#ffd93d';ctx.font='9px Fira Mono';ctx.textAlign='left';
+    ctx.fillText('Bayer RGGB filter pattern',bayerX,bayerY+rows*cell+12);
+
+    // ---- Ishihara-like plate ----
+    // background circle
+    ctx.fillStyle='#1a1a2a';ctx.beginPath();ctx.arc(px,py,centerR+10,0,TWO_PI);ctx.fill();
+    ctx.strokeStyle='#3a3a4a';ctx.lineWidth=2;ctx.stroke();
+
+    dots.forEach(d=>{
+      let color;
+      if(showCamera){
+        // Camera view: slight luminance difference between R and G makes number visible
+        // Camera R channel ≠ human L cone → different luminance weight
+        color=d.inNumber?
+          `hsl(15,70%,${48+8*Math.sin(t*0.5)}%)`:  // orange-ish (camera renders differently)
+          `hsl(110,45%,${38+6*Math.cos(t*0.3)}%)`;
+      }else{
+        // Simulate color-blind (dichromat isoluminant) view:
+        // both colors have same luminance, different hue, but dichromat sees same
+        const lum=42;
+        color=d.inNumber?`hsl(10,62%,${lum}%)`:`hsl(120,38%,${lum}%)`;
+      }
+      ctx.fillStyle=color;
+      ctx.beginPath();ctx.arc(px+d.x,py+d.y,d.r,0,TWO_PI);ctx.fill();
+    });
+
+    // toggle label
+    const mode=showCamera?'CAMERA VIEW':'COLOR-BLIND VIEW (dichromat)';
+    const modeColor=showCamera?'#ffd93d':'#aaa';
+    ctx.fillStyle=modeColor;ctx.font='bold 10px Fira Mono';ctx.textAlign='center';
+    ctx.fillText(mode,px,py+centerR+24);
+
+    const hint=showCamera?'"3" visible — camera luminance differs':'same luminance → "3" invisible';
+    ctx.fillStyle='#888';ctx.font='9px Fira Mono';ctx.textAlign='center';
+    ctx.fillText(hint,px,py+centerR+36);
+
+    // ---- spectral response diagram ----
+    const spX=W*0.6,spY=H*0.22,spW=W*0.33,spH=H*0.28;
+    ctx.strokeStyle='#2a2a3a';ctx.lineWidth=1;ctx.strokeRect(spX,spY,spW,spH);
+    // human L cone (peaks ~560nm)
+    function drawCurve(peak,color,label,yOff){
+      ctx.beginPath();
+      for(let i=0;i<=100;i++){
+        const wl=380+i*4; // nm
+        const v=Math.exp(-Math.pow((wl-peak)/50,2));
+        const x=spX+(wl-380)/300*spW;
+        const y=spY+spH-v*spH*0.8+yOff;
+        i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+      }
+      ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.stroke();
+      ctx.fillStyle=color;ctx.font='8px Fira Mono';ctx.textAlign='right';
+      ctx.fillText(label,spX+spW-2,spY+spH*yOff/spH+12);
+    }
+    drawCurve(560,'#ff4444aa','human L-cone (red)',0);
+    drawCurve(530,'#44ff44aa','human M-cone (green)',0);
+    drawCurve(575,'#ff880088','camera R-channel',0);
+    drawCurve(545,'#88ff8888','camera G-channel',0);
+
+    // wavelength axis
+    ctx.fillStyle='#6a6880';ctx.font='8px Fira Mono';ctx.textAlign='center';
+    [400,500,600,700].forEach(wl=>{
+      const x=spX+(wl-380)/300*spW;
+      ctx.fillText(wl,x,spY+spH+10);
+    });
+    ctx.fillText('wavelength (nm)',spX+spW/2,spY+spH+20);
+    ctx.fillStyle='#ffd93d';ctx.font='9px Fira Mono';ctx.textAlign='left';
+    ctx.fillText('Camera R ≠ human L-cone',spX,spY-6);
+    ctx.fillText('→ different luminance weight',spX,spY+4);
+
+    requestAnimationFrame(frame);
+  }
+  frame();
+});
+
+// ===== sidebar scroll tracking =====
+const sections=document.querySelectorAll('[data-section]');
+const dots2=document.querySelectorAll('.nav-dot');
+const obs=new IntersectionObserver(entries=>{
+  entries.forEach(e=>{
+    if(e.isIntersecting){
+      const s=e.target.dataset.section;
+      dots2.forEach(d=>d.classList.toggle('active',d.dataset.section===s));
+    }
+  });
+},{threshold:0.4});
+sections.forEach(s=>obs.observe(s));
+dots2.forEach(d=>{
+  d.addEventListener('click',()=>{
+    const sec=[...sections].find(s=>s.dataset.section===d.dataset.section);
+    if(sec)sec.scrollIntoView({behavior:'smooth'});
+  });
+});
+</script>
+</body>
+</html>
