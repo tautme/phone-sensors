@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Document Q&A with Citation Jumps</title>
+<style>
+  :root {
+    --bg: #fafaf7;
+    --fg: #1a1a1a;
+    --muted: #666;
+    --accent: #c4541c;
+    --accent-bg: #fff3e8;
+    --border: #ddd;
+    --hl: #fff59d;
+    --hl-active: #ffd54f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    padding: 8px 16px;
+    background: white;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .status { font-size: 12px; color: var(--muted); }
+  header .status.ready { color: #2a7a2a; }
+  header .status.error { color: #b22; }
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    overflow: hidden;
+    min-height: 0;
+  }
+  #docPane, #qaPane {
+    overflow: auto;
+    padding: 16px 20px;
+  }
+  #docPane {
+    border-right: 1px solid var(--border);
+    background: white;
+  }
+  #docPane pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: Georgia, serif;
+    font-size: 14px;
+    line-height: 1.55;
+    margin: 0;
+  }
+  #docPane .empty {
+    color: var(--muted);
+    font-style: italic;
+  }
+  mark.quote {
+    background: var(--hl);
+    padding: 1px 2px;
+    border-radius: 2px;
+    cursor: pointer;
+    scroll-margin-top: 20px;
+  }
+  mark.quote.active {
+    background: var(--hl-active);
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  #qaPane { background: var(--bg); }
+  .controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  textarea#question {
+    width: 100%;
+    min-height: 60px;
+    font-family: inherit;
+    font-size: 14px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    resize: vertical;
+  }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost {
+    background: white;
+    color: var(--fg);
+    border: 1px solid var(--border);
+  }
+  input[type=file] { font-size: 12px; }
+  .qa-item {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+  }
+  .qa-item .q {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--accent);
+  }
+  .qa-item .a {
+    line-height: 1.55;
+    font-size: 14px;
+    white-space: pre-wrap;
+  }
+  .qa-item .citations {
+    margin-top: 10px;
+    border-top: 1px dashed var(--border);
+    padding-top: 8px;
+    font-size: 12px;
+  }
+  .citations .cite {
+    display: inline-block;
+    background: var(--accent-bg);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin: 2px;
+    cursor: pointer;
+    font-family: monospace;
+  }
+  .citations .cite:hover { background: var(--accent); color: white; }
+  .citations .cite.missing {
+    border-color: #b22;
+    color: #b22;
+    background: #fee;
+  }
+  .raw-toggle {
+    font-size: 11px;
+    color: var(--muted);
+    cursor: pointer;
+    margin-top: 6px;
+    display: inline-block;
+  }
+  .raw {
+    display: none;
+    background: #f4f4f0;
+    padding: 6px;
+    margin-top: 4px;
+    font-family: monospace;
+    font-size: 11px;
+    white-space: pre-wrap;
+    border-radius: 3px;
+  }
+  .qa-item.open .raw { display: block; }
+  #progress {
+    height: 3px;
+    background: var(--border);
+    overflow: hidden;
+    display: none;
+  }
+  #progress.show { display: block; }
+  #progress div {
+    height: 100%;
+    background: var(--accent);
+    width: 0;
+    transition: width 0.3s;
+  }
+  .hint {
+    font-size: 12px;
+    color: var(--muted);
+    margin: 4px 0 12px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📄 Doc Q&A</h1>
+  <input type="file" id="fileInput" accept=".txt,.html,.md,.json,.csv">
+  <button class="ghost" id="loadModelBtn">Load model</button>
+  <span class="status" id="status">No model loaded</span>
+</header>
+<div id="progress"><div></div></div>
+
+<main>
+  <div id="docPane">
+    <pre id="docContent" class="empty">Drop a text file above to get started.
+
+This works best with plain text, markdown, or HTML where you can read the body content.
+For .html files I'll strip tags and keep the visible text.</pre>
+  </div>
+
+  <div id="qaPane">
+    <div class="controls">
+      <textarea id="question" placeholder="Ask a question about the document...&#10;&#10;Example: What is the main argument? Who disagrees? Summarize the top three points."></textarea>
+    </div>
+    <div class="controls">
+      <button id="askBtn" disabled>Ask</button>
+      <button class="ghost" id="clearBtn">Clear answers</button>
+    </div>
+    <p class="hint">
+      Citations in answers become clickable badges. Click one to highlight the quoted passage on the left.
+      Click a yellow highlight on the left to jump back to the citation here.
+    </p>
+    <div id="answers"></div>
+  </div>
+</main>
+
+<script type="module">
+import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+
+// ---------------- State ----------------
+let docText = "";
+let engine = null;
+let modelLoaded = false;
+let citationCounter = 0;
+
+const $ = id => document.getElementById(id);
+const statusEl = $("status");
+const progressBar = $("progress").firstElementChild;
+
+// ---------------- File loading ----------------
+$("fileInput").addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const text = await f.text();
+  // If HTML, extract visible text
+  if (f.name.endsWith(".html") || f.name.endsWith(".htm")) {
+    const doc = new DOMParser().parseFromString(text, "text/html");
+    // Remove scripts/styles
+    doc.querySelectorAll("script, style").forEach(el => el.remove());
+    docText = doc.body ? doc.body.innerText : doc.documentElement.innerText;
+  } else {
+    docText = text;
+  }
+  renderDoc();
+  $("askBtn").disabled = !modelLoaded;
+});
+
+function renderDoc() {
+  const pre = $("docContent");
+  pre.classList.remove("empty");
+  pre.textContent = docText;
+}
+
+// ---------------- Model loading ----------------
+const MODEL = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
+
+$("loadModelBtn").addEventListener("click", async () => {
+  if (modelLoaded || engine) return;
+  $("loadModelBtn").disabled = true;
+  $("progress").classList.add("show");
+  statusEl.textContent = "Loading model (first time: ~900MB download)...";
+  statusEl.className = "status";
+
+  try {
+    engine = await webllm.CreateMLCEngine(MODEL, {
+      initProgressCallback: (p) => {
+        statusEl.textContent = p.text;
+        if (p.progress != null) {
+          progressBar.style.width = (p.progress * 100) + "%";
+        }
+      }
+    });
+    modelLoaded = true;
+    statusEl.textContent = "Model ready ✓";
+    statusEl.className = "status ready";
+    $("progress").classList.remove("show");
+    $("askBtn").disabled = !docText;
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = "Model load failed: " + err.message;
+    statusEl.className = "status error";
+    $("loadModelBtn").disabled = false;
+  }
+});
+
+// ---------------- Asking ----------------
+$("askBtn").addEventListener("click", async () => {
+  const q = $("question").value.trim();
+  if (!q || !docText || !engine) return;
+
+  $("askBtn").disabled = true;
+  statusEl.textContent = "Thinking...";
+
+  // Truncate very large docs to fit context. ~3000 chars is safe-ish for 1B models.
+  const MAX_DOC = 6000;
+  const docForPrompt = docText.length > MAX_DOC
+    ? docText.slice(0, MAX_DOC) + "\n\n[...document truncated for model context...]"
+    : docText;
+
+  const sys = `You answer questions about a document the user provides. You MUST respond with valid JSON only, no other text, in this exact shape:
+{"answer": "your answer here", "citations": ["exact verbatim quote from the document", "another exact quote"]}
+Each citation MUST be a verbatim substring of the document — copy text exactly, including punctuation. Keep quotes short (5-25 words). Use 1-4 citations. If you cannot find supporting text, return an empty citations array.`;
+
+  const user = `DOCUMENT:\n${docForPrompt}\n\nQUESTION: ${q}\n\nRespond with JSON only.`;
+
+  try {
+    const reply = await engine.chat.completions.create({
+      messages: [
+        { role: "system", content: sys },
+        { role: "user", content: user }
+      ],
+      temperature: 0.3,
+      max_tokens: 600
+    });
+    const raw = reply.choices[0].message.content;
+    renderAnswer(q, raw);
+    statusEl.textContent = "Model ready ✓";
+  } catch (err) {
+    console.error(err);
+    renderAnswer(q, JSON.stringify({ answer: "Error: " + err.message, citations: [] }));
+    statusEl.textContent = "Error during inference";
+  } finally {
+    $("askBtn").disabled = false;
+  }
+});
+
+// ---------------- Rendering answers + citations ----------------
+function renderAnswer(question, rawJson) {
+  const id = ++citationCounter;
+  let parsed;
+  try {
+    // Strip markdown fences if model wraps JSON
+    const cleaned = rawJson.replace(/```json\s*|```\s*$/g, "").trim();
+    // Try to find first { ... } block
+    const m = cleaned.match(/\{[\s\S]*\}/);
+    parsed = JSON.parse(m ? m[0] : cleaned);
+  } catch (e) {
+    parsed = { answer: rawJson, citations: [] };
+  }
+
+  const item = document.createElement("div");
+  item.className = "qa-item";
+  item.dataset.qid = id;
+
+  const qDiv = document.createElement("div");
+  qDiv.className = "q";
+  qDiv.textContent = "Q: " + question;
+  item.appendChild(qDiv);
+
+  const aDiv = document.createElement("div");
+  aDiv.className = "a";
+  aDiv.textContent = parsed.answer || "(no answer)";
+  item.appendChild(aDiv);
+
+  if (Array.isArray(parsed.citations) && parsed.citations.length > 0) {
+    const cDiv = document.createElement("div");
+    cDiv.className = "citations";
+    cDiv.appendChild(document.createTextNode("Sources: "));
+    parsed.citations.forEach((quote, idx) => {
+      const cite = document.createElement("span");
+      cite.className = "cite";
+      const citeId = `cite-${id}-${idx}`;
+      cite.id = citeId;
+      cite.textContent = `[${idx + 1}]`;
+      cite.title = quote;
+
+      const found = highlightInDoc(quote, citeId);
+      if (!found) cite.classList.add("missing");
+
+      cite.addEventListener("click", () => {
+        if (!found) return;
+        // Clear previous active
+        document.querySelectorAll("mark.quote.active").forEach(m => m.classList.remove("active"));
+        const target = document.querySelector(`mark.quote[data-cite="${citeId}"]`);
+        if (target) {
+          target.classList.add("active");
+          target.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      });
+      cDiv.appendChild(cite);
+    });
+    item.appendChild(cDiv);
+  }
+
+  // Raw JSON toggle
+  const toggle = document.createElement("span");
+  toggle.className = "raw-toggle";
+  toggle.textContent = "show raw";
+  toggle.addEventListener("click", () => {
+    item.classList.toggle("open");
+    toggle.textContent = item.classList.contains("open") ? "hide raw" : "show raw";
+  });
+  item.appendChild(toggle);
+  const raw = document.createElement("div");
+  raw.className = "raw";
+  raw.textContent = rawJson;
+  item.appendChild(raw);
+
+  $("answers").prepend(item);
+}
+
+// ---------------- Doc highlighting ----------------
+// Every time we add a citation, we re-render the doc with all highlights.
+// Highlights are tracked in this list so we can rebuild reliably.
+const highlights = []; // [{quote, citeId}]
+
+function highlightInDoc(quote, citeId) {
+  if (!quote || quote.length < 4) return false;
+  // Try exact match first
+  let idx = docText.indexOf(quote);
+  // Fuzzy fallback: collapse whitespace
+  if (idx === -1) {
+    const norm = s => s.replace(/\s+/g, " ").trim();
+    const haystack = norm(docText);
+    const needle = norm(quote);
+    const ni = haystack.indexOf(needle);
+    if (ni === -1) return false;
+    // Map back approximately by walking
+    idx = approximateMap(docText, ni);
+    if (idx === -1) return false;
+    // Use the approximate slice from original text
+    quote = docText.slice(idx, idx + quote.length);
+  }
+  highlights.push({ quote, citeId, start: idx });
+  rebuildDoc();
+  return true;
+}
+
+function approximateMap(original, normalizedIndex) {
+  // Walk original, count non-collapsed whitespace position
+  let count = 0;
+  let prevWs = false;
+  for (let i = 0; i < original.length; i++) {
+    const c = original[i];
+    const isWs = /\s/.test(c);
+    if (isWs) {
+      if (!prevWs) {
+        if (count === normalizedIndex) return i;
+        count++;
+      }
+      prevWs = true;
+    } else {
+      if (count === normalizedIndex) return i;
+      count++;
+      prevWs = false;
+    }
+  }
+  return -1;
+}
+
+function rebuildDoc() {
+  // Sort highlights by start position, build innerHTML with marks
+  const sorted = [...highlights].sort((a, b) => a.start - b.start);
+  // Filter overlaps: keep first, drop overlapping later
+  const kept = [];
+  let lastEnd = -1;
+  for (const h of sorted) {
+    if (h.start >= lastEnd) {
+      kept.push(h);
+      lastEnd = h.start + h.quote.length;
+    }
+  }
+  let html = "";
+  let cursor = 0;
+  for (const h of kept) {
+    html += escapeHtml(docText.slice(cursor, h.start));
+    html += `<mark class="quote" data-cite="${h.citeId}">${escapeHtml(docText.slice(h.start, h.start + h.quote.length))}</mark>`;
+    cursor = h.start + h.quote.length;
+  }
+  html += escapeHtml(docText.slice(cursor));
+  $("docContent").innerHTML = html;
+  // Rewire mark clicks (click highlight -> scroll to citation)
+  document.querySelectorAll("mark.quote").forEach(m => {
+    m.addEventListener("click", () => {
+      const cid = m.dataset.cite;
+      const target = document.getElementById(cid);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        target.style.transition = "transform 0.2s";
+        target.style.transform = "scale(1.3)";
+        setTimeout(() => target.style.transform = "", 300);
+      }
+    });
+  });
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+// ---------------- Misc ----------------
+$("clearBtn").addEventListener("click", () => {
+  $("answers").innerHTML = "";
+  highlights.length = 0;
+  if (docText) renderDoc();
+});
+
+// Keyboard: Cmd/Ctrl+Enter to ask
+$("question").addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+    $("askBtn").click();
+  }
+});
+</script>
+</body>
+</html>
