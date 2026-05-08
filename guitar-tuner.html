@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+<meta http-equiv="Permissions-Policy" content="microphone=*">
+<meta name="theme-color" content="#07080a">
+<title>guitar-tuner</title>
+<style>
+  :root {
+    --bg: #07080a;
+    --ink: #e6e9ef;
+    --dim: #6b7280;
+    --line: #1c2026;
+    --hot: #ffba49;
+    --ok: #6fe079;
+    --bad: #ff6b6b;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 13px/1.3 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+    -webkit-user-select: none;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+  }
+  .top {
+    flex: 0 0 auto;
+    padding: max(env(safe-area-inset-top), 10px) 14px 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .row1 { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .note {
+    font: 600 32px/1 "Iowan Old Style", "Charter", Georgia, serif;
+    letter-spacing: -0.02em;
+  }
+  .note .sub { font-size: 12px; color: var(--dim); margin-left: 6px; font-family: ui-monospace, monospace; font-weight: normal; }
+  .nums { text-align: right; line-height: 1.25; }
+  .nums .freq { color: var(--ink); font-size: 14px; font-weight: 600; }
+  .nums .cents { font-size: 13px; color: var(--dim); }
+  .nums .cents.ok { color: var(--ok); }
+  .nums .cents.off { color: var(--hot); }
+  .nums .cents.far { color: var(--bad); }
+
+  .meter {
+    height: 22px;
+    margin-top: 8px;
+    position: relative;
+    background:
+      linear-gradient(90deg,
+        rgba(255,107,107,0.28) 0%,
+        rgba(255,186,73,0.18) 30%,
+        rgba(111,224,121,0.20) 50%,
+        rgba(255,186,73,0.18) 70%,
+        rgba(255,107,107,0.28) 100%);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .meter .center { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.4); }
+  .meter .needle {
+    position: absolute; top: 2px; bottom: 2px;
+    left: 50%; width: 3px; margin-left: -1.5px;
+    background: var(--hot);
+    border-radius: 2px;
+    transition: left 90ms linear, background 120ms;
+    box-shadow: 0 0 8px currentColor;
+  }
+  .meter .needle.ok { background: var(--ok); }
+  .meter .needle.far { background: var(--bad); }
+
+  canvas#waterfall {
+    flex: 1 1 auto;
+    width: 100%;
+    display: block;
+    background: #000;
+    min-height: 0;
+  }
+  .lock-flash {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    background: radial-gradient(closest-side, rgba(111,224,121,0.45), transparent 70%);
+    opacity: 0;
+    transition: opacity 220ms;
+    z-index: 5;
+  }
+  .lock-flash.on { opacity: 1; }
+
+  .bot {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 4px;
+    padding: 8px 8px max(env(safe-area-inset-bottom), 8px);
+    border-top: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .bot button {
+    flex: 1;
+    background: transparent;
+    color: var(--dim);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 10px 0;
+    font: 600 12px/1 ui-monospace, monospace;
+    cursor: pointer;
+    transition: background 100ms, color 100ms, border-color 100ms;
+  }
+  .bot button.active {
+    background: var(--ink);
+    color: var(--bg);
+    border-color: var(--ink);
+  }
+  .bot button.detected:not(.active) {
+    border-color: var(--hot);
+    color: var(--hot);
+  }
+
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(7,8,10,0.96);
+    display: grid; place-items: center;
+    z-index: 10;
+    padding: 24px;
+  }
+  .overlay-inner { text-align: center; max-width: 320px; }
+  .overlay h1 {
+    font: 600 22px/1.1 "Iowan Old Style", Charter, Georgia, serif;
+    margin: 0 0 6px;
+  }
+  .overlay p { color: var(--dim); margin: 0 0 18px; font-size: 12px; }
+  .overlay button {
+    background: var(--ink);
+    color: var(--bg);
+    border: none;
+    padding: 14px 28px;
+    font: 600 14px/1 ui-monospace, monospace;
+    border-radius: 4px;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+  }
+  .overlay .hint { color: var(--dim); margin-top: 12px; font-size: 11px; }
+  .overlay.hidden { display: none; }
+</style>
+</head>
+<body>
+  <div class="top">
+    <div class="row1">
+      <div class="note"><span id="noteName">—</span><span class="sub" id="targetFreq"></span></div>
+      <div class="nums">
+        <div class="freq" id="liveFreq">— Hz</div>
+        <div class="cents" id="cents">—</div>
+      </div>
+    </div>
+    <div class="meter">
+      <div class="center"></div>
+      <div class="needle" id="needle"></div>
+    </div>
+  </div>
+
+  <canvas id="waterfall"></canvas>
+  <div class="lock-flash" id="lockFlash"></div>
+
+  <div class="bot" id="strings">
+    <button data-target="auto" class="active">AUTO</button>
+    <button data-target="0">E2</button>
+    <button data-target="1">A2</button>
+    <button data-target="2">D3</button>
+    <button data-target="3">G3</button>
+    <button data-target="4">B3</button>
+    <button data-target="5">E4</button>
+  </div>
+
+  <div class="overlay" id="overlay">
+    <div class="overlay-inner">
+      <h1>Guitar Tuner</h1>
+      <p>Pluck a string. The tuner finds the closest note, scrolls a waterfall of what it hears, and dings when you hold the pitch within 2% for 2&nbsp;seconds.</p>
+      <button id="startBtn">tap to start</button>
+      <div class="hint">microphone permission required</div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const STRINGS = [
+    { name: 'E2', freq: 82.41 },
+    { name: 'A2', freq: 110.00 },
+    { name: 'D3', freq: 146.83 },
+    { name: 'G3', freq: 196.00 },
+    { name: 'B3', freq: 246.94 },
+    { name: 'E4', freq: 329.63 },
+  ];
+  const MIN_HZ = 60;
+  const MAX_HZ = 800;
+  const LOCK_THRESHOLD = 0.02;   // 2%
+  const LOCK_HOLD_MS  = 2000;    // 2 seconds
+
+  let audioCtx, analyser, micSource, mediaStream;
+  let timeBuf, freqBuf;
+  let selectedStringIdx = null;     // null = auto
+  let lastDetectedFreq  = 0;
+  let lastDetectedStringIdx = null;
+  let lockStart = null;
+  let dingedFor = null;             // last string idx we dinged for
+
+  const canvas = document.getElementById('waterfall');
+  const wctx = canvas.getContext('2d', { alpha: false });
+  let cw = 0, ch = 0;
+
+  // ── magma-ish palette ─────────────────────
+  const PALETTE = [
+    [4, 0, 8], [44, 16, 92], [113, 31, 129], [183, 55, 121],
+    [241, 96, 93], [254, 196, 121], [252, 253, 191],
+  ];
+
+  // ── pitch detect: autocorrelation + parabolic interp ──
+  function detectPitch(buf, sampleRate) {
+    const SIZE = buf.length;
+    let rms = 0;
+    for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
+    rms = Math.sqrt(rms / SIZE);
+    if (rms < 0.01) return -1;
+
+    // trim leading/trailing low-amplitude regions
+    let r1 = 0, r2 = SIZE - 1;
+    const thres = 0.2;
+    for (let i = 0; i < SIZE / 2; i++)        if (Math.abs(buf[i]) < thres) { r1 = i; break; }
+    for (let i = 1; i < SIZE / 2; i++)        if (Math.abs(buf[SIZE - i]) < thres) { r2 = SIZE - i; break; }
+    const slice = buf.subarray(r1, r2);
+    const N = slice.length;
+    if (N < 64) return -1;
+
+    const minLag = Math.max(2, Math.floor(sampleRate / MAX_HZ));
+    const maxLag = Math.min(N - 2, Math.ceil(sampleRate / MIN_HZ));
+    if (maxLag <= minLag) return -1;
+
+    const c = new Float32Array(maxLag + 2);
+    for (let i = minLag - 1; i <= maxLag + 1; i++) {
+      let s = 0;
+      const end = N - i;
+      for (let j = 0; j < end; j++) s += slice[j] * slice[j + i];
+      c[i] = s;
+    }
+    let maxv = -Infinity, maxp = -1;
+    for (let i = minLag; i <= maxLag; i++) if (c[i] > maxv) { maxv = c[i]; maxp = i; }
+    if (maxp <= 0) return -1;
+    const x1 = c[maxp - 1], x2 = c[maxp], x3 = c[maxp + 1];
+    const a = (x1 + x3 - 2 * x2) / 2;
+    const b = (x3 - x1) / 2;
+    const T = a ? maxp - b / (2 * a) : maxp;
+    return sampleRate / T;
+  }
+
+  // ── ding (bell-like, 4 harmonics, exp decay) ──
+  function ding(freq) {
+    const t0 = audioCtx.currentTime;
+    const harmonics = [[1, 0.50], [2, 0.25], [3, 0.12], [4, 0.05]];
+    for (const [mult, amp] of harmonics) {
+      const o = audioCtx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = freq * mult;
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(amp * 0.7, t0 + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.7);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t0);
+      o.stop(t0 + 0.75);
+    }
+    const flash = document.getElementById('lockFlash');
+    flash.classList.add('on');
+    setTimeout(() => flash.classList.remove('on'), 260);
+  }
+
+  // ── canvas sizing ────────────────────────
+  function resizeCanvas() {
+    const r = canvas.getBoundingClientRect();
+    cw = canvas.width  = Math.max(1, r.width  | 0);
+    ch = canvas.height = Math.max(1, r.height | 0);
+    wctx.fillStyle = '#000';
+    wctx.fillRect(0, 0, cw, ch);
+  }
+
+  // ── waterfall ────────────────────────────
+  function freqToX(f) {
+    return cw * Math.log(f / MIN_HZ) / Math.log(MAX_HZ / MIN_HZ);
+  }
+
+  function drawWaterfall() {
+    if (!analyser) return;
+    analyser.getByteFrequencyData(freqBuf);
+
+    // scroll content down by 1 px
+    wctx.drawImage(canvas, 0, 0, cw, ch - 1, 0, 1, cw, ch - 1);
+
+    // new top row, log-spaced bins
+    const binHz = audioCtx.sampleRate / analyser.fftSize;
+    const logRatio = Math.log(MAX_HZ / MIN_HZ);
+    const img = wctx.createImageData(cw, 1);
+    for (let x = 0; x < cw; x++) {
+      const freq = MIN_HZ * Math.exp((x / cw) * logRatio);
+      const bin = freq / binHz;
+      const i0 = Math.floor(bin);
+      const i1 = Math.min(freqBuf.length - 1, i0 + 1);
+      const t = bin - i0;
+      const v = ((1 - t) * freqBuf[i0] + t * freqBuf[i1]) / 255;
+      const eased = Math.pow(v, 0.7);
+      const seg = eased * (PALETTE.length - 1);
+      const si = Math.floor(seg);
+      const sf = seg - si;
+      const a = PALETTE[si];
+      const b = PALETTE[Math.min(PALETTE.length - 1, si + 1)];
+      const px = x * 4;
+      img.data[px]     = (a[0] + (b[0] - a[0]) * sf) | 0;
+      img.data[px + 1] = (a[1] + (b[1] - a[1]) * sf) | 0;
+      img.data[px + 2] = (a[2] + (b[2] - a[2]) * sf) | 0;
+      img.data[px + 3] = 255;
+    }
+    wctx.putImageData(img, 0, 0);
+
+    drawTargetMarkers();
+  }
+
+  function drawTargetMarkers() {
+    const targetIdx = (selectedStringIdx !== null) ? selectedStringIdx : lastDetectedStringIdx;
+    wctx.font = '10px ui-monospace, monospace';
+    for (let i = 0; i < STRINGS.length; i++) {
+      const x = freqToX(STRINGS[i].freq);
+      if (x < 0 || x > cw) continue;
+      const isTarget = i === targetIdx;
+      wctx.fillStyle = isTarget ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.20)';
+      wctx.fillRect(x | 0, 0, 1, ch);
+      wctx.fillStyle = isTarget ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.55)';
+      wctx.fillText(STRINGS[i].name, (x | 0) + 3, 11);
+    }
+    if (lastDetectedFreq > MIN_HZ && lastDetectedFreq < MAX_HZ) {
+      const x = freqToX(lastDetectedFreq);
+      wctx.fillStyle = '#ffba49';
+      wctx.fillRect((x | 0), 0, 2, ch);
+    }
+  }
+
+  // ── string selection ─────────────────────
+  function nearestString(f) {
+    let best = -1, bestDist = Infinity;
+    for (let i = 0; i < STRINGS.length; i++) {
+      const d = Math.abs(Math.log(f / STRINGS[i].freq));
+      if (d < bestDist) { bestDist = d; best = i; }
+    }
+    return best;
+  }
+
+  // ── UI update ────────────────────────────
+  function clearReadout() {
+    document.getElementById('liveFreq').textContent = '— Hz';
+    const c = document.getElementById('cents');
+    c.textContent = '—'; c.className = 'cents';
+    const n = document.getElementById('needle');
+    n.style.left = '50%'; n.className = 'needle';
+    lockStart = null;
+    if (selectedStringIdx === null) {
+      document.querySelectorAll('#strings button').forEach(b => b.classList.remove('detected'));
+      document.getElementById('noteName').textContent = '—';
+      document.getElementById('targetFreq').textContent = '';
+    }
+  }
+
+  function updateReadout(f) {
+    document.getElementById('liveFreq').textContent = f.toFixed(1) + ' Hz';
+
+    let targetIdx = selectedStringIdx;
+    if (targetIdx === null) {
+      targetIdx = nearestString(f);
+      lastDetectedStringIdx = targetIdx;
+    }
+    const target = STRINGS[targetIdx];
+    document.getElementById('noteName').textContent = target.name;
+    document.getElementById('targetFreq').textContent = target.freq.toFixed(2) + ' Hz';
+
+    const cents = 1200 * Math.log2(f / target.freq);
+    const cEl = document.getElementById('cents');
+    const sign = cents >= 0 ? '+' : '';
+    cEl.textContent = `${sign}${cents.toFixed(1)}¢`;
+    const absC = Math.abs(cents);
+    const cls = absC < 5 ? 'ok' : absC < 25 ? 'off' : 'far';
+    cEl.className = 'cents ' + cls;
+
+    const needle = document.getElementById('needle');
+    const clamped = Math.max(-50, Math.min(50, cents));
+    needle.style.left = `${50 + clamped}%`;
+    needle.className = 'needle ' + cls;
+
+    if (selectedStringIdx === null) {
+      document.querySelectorAll('#strings button').forEach(b => b.classList.remove('detected'));
+      const detBtn = document.querySelector(`#strings button[data-target="${targetIdx}"]`);
+      if (detBtn) detBtn.classList.add('detected');
+    }
+
+    // lock detection (within 2% for 2 seconds)
+    const within = Math.abs(f - target.freq) / target.freq < LOCK_THRESHOLD;
+    if (within) {
+      if (lockStart === null) lockStart = performance.now();
+      else if (performance.now() - lockStart >= LOCK_HOLD_MS && dingedFor !== targetIdx) {
+        ding(target.freq);
+        dingedFor = targetIdx;
+      }
+    } else {
+      lockStart = null;
+      // re-arm if we drift more than 50 cents away
+      if (dingedFor === targetIdx && Math.abs(cents) > 50) dingedFor = null;
+    }
+  }
+
+  // ── main loop ────────────────────────────
+  let lastPitchT = 0;
+  function loop(t) {
+    drawWaterfall();
+    if (t - lastPitchT > 80) {     // ~12 Hz pitch detection
+      lastPitchT = t;
+      analyser.getFloatTimeDomainData(timeBuf);
+      const f = detectPitch(timeBuf, audioCtx.sampleRate);
+      if (f > MIN_HZ && f < MAX_HZ * 1.5) {
+        lastDetectedFreq = lastDetectedFreq === 0 ? f : (lastDetectedFreq * 0.4 + f * 0.6);
+        updateReadout(lastDetectedFreq);
+      } else {
+        lastDetectedFreq *= 0.85;
+        if (lastDetectedFreq < MIN_HZ * 0.9) {
+          lastDetectedFreq = 0;
+          clearReadout();
+        }
+      }
+    }
+    requestAnimationFrame(loop);
+  }
+
+  // ── string buttons ───────────────────────
+  document.getElementById('strings').addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    document.querySelectorAll('#strings button').forEach(b => { b.classList.remove('active'); b.classList.remove('detected'); });
+    btn.classList.add('active');
+    const t = btn.dataset.target;
+    selectedStringIdx = (t === 'auto') ? null : parseInt(t, 10);
+    dingedFor = null;
+    lockStart = null;
+    if (selectedStringIdx !== null) {
+      const s = STRINGS[selectedStringIdx];
+      document.getElementById('noteName').textContent = s.name;
+      document.getElementById('targetFreq').textContent = s.freq.toFixed(2) + ' Hz';
+    }
+  });
+
+  // ── start ────────────────────────────────
+  document.getElementById('startBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('startBtn');
+    btn.textContent = 'starting…';
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+        video: false,
+      });
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+      micSource = audioCtx.createMediaStreamSource(mediaStream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 4096;
+      analyser.smoothingTimeConstant = 0.65;
+      micSource.connect(analyser);
+      timeBuf = new Float32Array(2048);
+      freqBuf = new Uint8Array(analyser.frequencyBinCount);
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
+      window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 250));
+      document.getElementById('overlay').classList.add('hidden');
+      requestAnimationFrame(loop);
+    } catch (e) {
+      btn.textContent = 'mic blocked';
+      const hint = document.querySelector('.overlay .hint');
+      if (hint) hint.textContent = (e && e.message) ? e.message : 'permission denied';
+    }
+  });
+})();
+</script>
+</body>
+</html>
