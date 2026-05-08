@@ -112,8 +112,10 @@
     font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.15em;
     margin-bottom: 6px;
   }
-  .crop img { display: block; max-width: 200px; max-height: 220px; background: #000; border-radius: 2px; }
+  .crop img { display: block; max-width: 240px; max-height: 240px; background: #000; border-radius: 2px; }
   .crop .meta { font-size: 11px; color: var(--dim); margin-top: 6px; }
+  .crop .actions { display: flex; gap: 6px; margin-top: 8px; }
+  .crop .actions button { padding: 5px 10px; font-size: 11px; }
 
   .grid {
     display: grid;
@@ -139,6 +141,7 @@
   .engine[data-color="ok"]::before { background: var(--ok); }
   .engine[data-color="bad"]::before { background: var(--bad); }
   .engine[data-color="purple"]::before { background: #b07cff; }
+  .engine[data-color="green"]::before { background: #5fdba0; }
 
   .engine .head {
     display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px;
@@ -195,7 +198,7 @@
 
 <header>
   <h1>ocr&#8209;vision <span class="tag">poc</span></h1>
-  <p class="lede">Detect a book in frame &rarr; crop to its bounding box &rarr; run any OCR engine on demand. Pick engines individually to avoid mobile OOM from loading them all at once.</p>
+  <p class="lede">Detect a book spine with an oriented bounding box (OpenCV) &rarr; deskew &rarr; run any OCR engine on demand.</p>
 </header>
 
 <div class="controls">
@@ -216,7 +219,7 @@
 
 <div class="crops" id="crops" hidden>
   <div class="crop">
-    <div class="label">Detected book</div>
+    <div class="label">Detected spine</div>
     <img id="bookCrop" alt="">
     <div class="meta" id="bookMeta"></div>
   </div>
@@ -224,6 +227,9 @@
     <div class="label">OCR input</div>
     <img id="ocrCrop" alt="">
     <div class="meta" id="ocrMeta"></div>
+    <div class="actions">
+      <button id="flipBtn" title="Use if text reads upside-down">Flip 180°</button>
+    </div>
   </div>
 </div>
 
@@ -231,21 +237,19 @@
 
 <details>
   <summary>Notes &amp; caveats</summary>
-  <p><b>Why per-engine Run buttons:</b> loading all engines at once on mobile crashes the tab. Each engine loads on first Run; subsequent runs reuse the loaded model.</p>
-  <p><b>Detection:</b> TF.js COCO-SSD (lite_mobilenet_v2). The COCO <code>book</code> class generally fires on spine-out books. If detection misses, the full frame is used.</p>
-  <p><b>Rotation:</b> if the crop is taller than wide (typical for spine-out text), it's auto-rotated 90&deg; counter-clockwise before OCR. If results look reversed, re-capture with the book flipped.</p>
-  <p><b>Tesseract Fast vs Best:</b> same library, different trained data files. Fast (~11MB) prioritizes speed; Best (~25MB) prioritizes accuracy. Both run fully offline once cached.</p>
-  <p><b>PaddleOCR</b> via <code>@gutenye/ocr-browser</code> wraps PP-OCR ONNX models (~10MB total) with onnxruntime-web. Often strong on stylized type and short text. Models load from the package's CD[...]
-  <p><b>TrOCR</b> models are transformer-based and produce the best results on stylized printed text or handwriting, but are ~120MB even quantized (q8). Choose printed for typeset spines, handwri[...]
-  <p><b>All client-side.</b> Nothing leaves the device. First run downloads weights (browser cache makes subsequent loads near-instant).</p>
+  <p><b>Detection (new):</b> classical CV via OpenCV.js — Canny edges, contour finding, <code>minAreaRect</code> for an oriented rectangle. Works for tilted spines. Frame the spine clearly; the largest elongated rectangle wins. ~9MB lazy-loaded on first capture.</p>
+  <p><b>Rotation:</b> portrait crops are rotated 90° <i>counter-clockwise</i> so top-of-spine reads as left-of-text. Whether the title ends up right-side-up depends on how the book was shot — there's no way to tell without OCR. Use <b>Flip 180°</b> on the OCR input if the result is upside-down.</p>
+  <p><b>Tesseract Fast vs Best:</b> same engine, different traineddata files (~11MB vs ~25MB).</p>
+  <p><b>PaddleOCR PP-OCRv4</b> via <code>esearch-ocr</code> with detector + recognizer ONNX models from <code>paddleocr-browser</code>. Loads onnxruntime-web.</p>
+  <p><b>PaddleOCR PP-OCRv5</b> via <code>ppu-paddle-ocr</code> — newer mobile model. Loads its own onnxruntime-web build internally.</p>
+  <p><b>TrOCR</b> models are q8-quantized (~120MB each). Printed for typeset spines, handwritten for hand-lettered ones.</p>
+  <p><b>All client-side.</b> Nothing leaves the device.</p>
 </details>
 
 <footer>
-  Part of the <a href="https://tautme.github.io/phone-sensors/">phone-sensors</a> collection. HTTPS required for camera. MIT.
+  Part of the <a href="https://tautme.github.io/phone-sensors/">phone-sensors</a> collection. HTTPS required. MIT.
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
 
 <script type="module">
@@ -258,8 +262,8 @@ const overlay = $('overlay');
 const stage = $('stage');
 
 let stream = null;
-let detector = null;
 let frameSource = null;
+let lastDetectedRect = null;     // for redrawing on resize
 let currentCrop = null;          // canvas every engine consumes
 
 function setStatus(msg, kind = '') {
@@ -311,6 +315,50 @@ $('fileInput').addEventListener('change', e => {
   uploaded.src = url;
 });
 
+// ── lazy loaders for heavy libs ──────────────────────────────────
+let cvPromise = null;
+function ensureCv() {
+  if (cvPromise) return cvPromise;
+  cvPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.async = true;
+    s.src = 'https://docs.opencv.org/4.10.0/opencv.js';
+    s.onload = () => {
+      // OpenCV.js sets window.cv to a Module that's not ready yet
+      const wait = () => {
+        if (window.cv && window.cv.Mat) return resolve(window.cv);
+        if (window.cv && typeof window.cv.then === 'function') {
+          window.cv.then(c => resolve(c)).catch(reject);
+          return;
+        }
+        setTimeout(wait, 50);
+      };
+      // Hook onRuntimeInitialized if available
+      if (window.cv && !window.cv.Mat) {
+        window.cv.onRuntimeInitialized = () => resolve(window.cv);
+      }
+      wait();
+    };
+    s.onerror = () => reject(new Error('failed to load opencv.js'));
+    document.head.appendChild(s);
+  });
+  return cvPromise;
+}
+
+let ortPromise = null;
+function ensureOrt() {
+  if (ortPromise) return ortPromise;
+  ortPromise = new Promise((resolve, reject) => {
+    if (window.ort) return resolve(window.ort);
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js';
+    s.onload = () => resolve(window.ort);
+    s.onerror = () => reject(new Error('failed to load onnxruntime-web'));
+    document.head.appendChild(s);
+  });
+  return ortPromise;
+}
+
 // ── pipeline helpers ─────────────────────────────────────────────
 function captureFrame(source) {
   const c = document.createElement('canvas');
@@ -321,53 +369,108 @@ function captureFrame(source) {
   c.getContext('2d').drawImage(source, 0, 0, w, h);
   return c;
 }
-async function ensureDetector() {
-  if (detector) return;
-  setStatus('Loading object detector (COCO-SSD)…', 'work');
-  detector = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+
+// Detect the best spine candidate as an oriented rectangle.
+// Returns { center: {x,y}, size: {width,height}, angle } in source-canvas pixels, or null.
+function detectSpineRect(cv, srcCanvas) {
+  // Downscale for speed
+  const MAX_DIM = 1024;
+  const scale = Math.min(1, MAX_DIM / Math.max(srcCanvas.width, srcCanvas.height));
+  let work = srcCanvas;
+  if (scale < 1) {
+    work = document.createElement('canvas');
+    work.width = Math.round(srcCanvas.width * scale);
+    work.height = Math.round(srcCanvas.height * scale);
+    work.getContext('2d').drawImage(srcCanvas, 0, 0, work.width, work.height);
+  }
+
+  const src = cv.imread(work);
+  const gray = new cv.Mat();
+  const edges = new cv.Mat();
+  const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
+  const contours = new cv.MatVector();
+  const hierarchy = new cv.Mat();
+
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
+  cv.Canny(gray, edges, 50, 150);
+  cv.dilate(edges, edges, kernel);
+  cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+  const totalArea = src.rows * src.cols;
+  let bestRect = null, bestScore = 0;
+
+  for (let i = 0; i < contours.size(); i++) {
+    const c = contours.get(i);
+    const area = cv.contourArea(c);
+    if (area < totalArea * 0.015) { c.delete(); continue; }
+    const rect = cv.minAreaRect(c);
+    const w = rect.size.width, h = rect.size.height;
+    if (w < 8 || h < 8) { c.delete(); continue; }
+    const longSide = Math.max(w, h), shortSide = Math.min(w, h);
+    const aspect = longSide / shortSide;
+    if (aspect < 1.4 || aspect > 30) { c.delete(); continue; }
+    const rectArea = w * h;
+    const rectangularity = area / rectArea;
+    if (rectangularity < 0.4) { c.delete(); continue; }
+    // Prefer larger, more rectangular, and reasonably elongated
+    const score = area * rectangularity * Math.min(aspect, 8);
+    if (score > bestScore) {
+      bestScore = score;
+      bestRect = {
+        center: { x: rect.center.x, y: rect.center.y },
+        size:   { width: rect.size.width, height: rect.size.height },
+        angle:  rect.angle,
+      };
+    }
+    c.delete();
+  }
+
+  src.delete(); gray.delete(); edges.delete();
+  kernel.delete(); contours.delete(); hierarchy.delete();
+
+  // Scale rect back to source-canvas pixels
+  if (bestRect && scale < 1) {
+    const inv = 1 / scale;
+    bestRect.center.x *= inv;
+    bestRect.center.y *= inv;
+    bestRect.size.width *= inv;
+    bestRect.size.height *= inv;
+  }
+  return bestRect;
 }
-function drawDetection(bbox, score) {
-  const sw = frameSource.videoWidth || frameSource.naturalWidth;
-  const sh = frameSource.videoHeight || frameSource.naturalHeight;
-  const rect = stage.getBoundingClientRect();
-  overlay.width = rect.width; overlay.height = rect.height;
-  const ratio = Math.min(rect.width / sw, rect.height / sh);
-  const dw = sw * ratio, dh = sh * ratio;
-  const ox = (rect.width - dw) / 2, oy = (rect.height - dh) / 2;
-  const [x, y, w, h] = bbox;
-  const ctx = overlay.getContext('2d');
-  ctx.clearRect(0, 0, overlay.width, overlay.height);
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = '#5fb8ff';
-  ctx.strokeRect(ox + x * ratio, oy + y * ratio, w * ratio, h * ratio);
-  const lbl = `book ${(score * 100).toFixed(0)}%`;
-  ctx.font = 'bold 12px ui-monospace, Menlo, monospace';
-  const pad = 4, tw = ctx.measureText(lbl).width + pad * 2;
-  ctx.fillStyle = '#5fb8ff';
-  ctx.fillRect(ox + x * ratio, oy + y * ratio - 18, tw, 18);
-  ctx.fillStyle = '#0a0c11';
-  ctx.fillText(lbl, ox + x * ratio + pad, oy + y * ratio - 5);
-}
-function clearOverlay() {
-  const ctx = overlay.getContext('2d');
-  ctx.clearRect(0, 0, overlay.width, overlay.height);
-}
-function cropFrom(canvas, bbox, pad = 6) {
-  const [x, y, w, h] = bbox;
-  const x0 = Math.max(0, Math.floor(x - pad));
-  const y0 = Math.max(0, Math.floor(y - pad));
-  const x1 = Math.min(canvas.width, Math.ceil(x + w + pad));
-  const y1 = Math.min(canvas.height, Math.ceil(y + h + pad));
-  const cw = x1 - x0, ch = y1 - y0;
+
+// Crop along the rotated rect: rotate the whole image by -angle, then ROI.
+function rotatedCrop(cv, srcCanvas, rect) {
+  const src = cv.imread(srcCanvas);
+  const center = new cv.Point(rect.center.x, rect.center.y);
+  const M = cv.getRotationMatrix2D(center, rect.angle, 1.0);
+  const rotated = new cv.Mat();
+  const dsize = new cv.Size(src.cols, src.rows);
+  cv.warpAffine(
+    src, rotated, M, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT,
+    new cv.Scalar(0, 0, 0, 255)
+  );
+  const w = Math.round(rect.size.width);
+  const h = Math.round(rect.size.height);
+  const pad = 6;
+  const x = Math.max(0, Math.round(rect.center.x - w / 2) - pad);
+  const y = Math.max(0, Math.round(rect.center.y - h / 2) - pad);
+  const rw = Math.min(rotated.cols - x, w + 2 * pad);
+  const rh = Math.min(rotated.rows - y, h + 2 * pad);
+  const cropped = rotated.roi(new cv.Rect(x, y, rw, rh));
   const out = document.createElement('canvas');
-  out.width = cw; out.height = ch;
-  out.getContext('2d').drawImage(canvas, x0, y0, cw, ch, 0, 0, cw, ch);
+  cv.imshow(out, cropped);
+  src.delete(); M.delete(); rotated.delete(); cropped.delete();
   return out;
 }
-function rotateIfPortrait(canvas) {
-  if (canvas.height <= canvas.width * 1.2) return { canvas, rotated: false };
+
+// 90° CCW rotation: source top → destination left → text reads L→R for top-down spines
+function rotateCCWIfPortrait(canvas) {
+  if (canvas.height <= canvas.width * 1.1) return { canvas, rotated: false };
   const out = document.createElement('canvas');
-  out.width = canvas.height; out.height = canvas.width;
+  out.width = canvas.height;
+  out.height = canvas.width;
   const ctx = out.getContext('2d');
   ctx.translate(0, out.height);
   ctx.rotate(-Math.PI / 2);
@@ -375,9 +478,65 @@ function rotateIfPortrait(canvas) {
   return { canvas: out, rotated: true };
 }
 
-// ── ENGINES ──────────────────────────────────────────────────────
-// Each engine: { name, sub, color, loaded, init(onProg), run(canvas) → {text, stats} }
+// 180° flip (manual correction button)
+function flip180(canvas) {
+  const out = document.createElement('canvas');
+  out.width = canvas.width;
+  out.height = canvas.height;
+  const ctx = out.getContext('2d');
+  ctx.translate(out.width, out.height);
+  ctx.rotate(Math.PI);
+  ctx.drawImage(canvas, 0, 0);
+  return out;
+}
 
+function drawRotatedRect(rect) {
+  if (!frameSource) return;
+  const sw = frameSource.videoWidth || frameSource.naturalWidth;
+  const sh = frameSource.videoHeight || frameSource.naturalHeight;
+  const r = stage.getBoundingClientRect();
+  overlay.width = r.width; overlay.height = r.height;
+  const ratio = Math.min(r.width / sw, r.height / sh);
+  const dw = sw * ratio, dh = sh * ratio;
+  const ox = (r.width - dw) / 2, oy = (r.height - dh) / 2;
+
+  const cx = rect.center.x, cy = rect.center.y;
+  const w = rect.size.width / 2, h = rect.size.height / 2;
+  const a = rect.angle * Math.PI / 180;
+  const ca = Math.cos(a), sa = Math.sin(a);
+  const corners = [[-w,-h],[w,-h],[w,h],[-w,h]].map(([x,y]) => [
+    ox + (cx + x*ca - y*sa) * ratio,
+    oy + (cy + x*sa + y*ca) * ratio,
+  ]);
+
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#5fb8ff';
+  ctx.fillStyle = 'rgba(95,184,255,0.12)';
+  ctx.beginPath();
+  for (let i = 0; i < 4; i++) {
+    const [x, y] = corners[i];
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.font = 'bold 12px ui-monospace, Menlo, monospace';
+  const lbl = `spine · ${rect.angle.toFixed(1)}°`;
+  const pad = 4;
+  const tw = ctx.measureText(lbl).width + pad * 2;
+  ctx.fillStyle = '#5fb8ff';
+  ctx.fillRect(corners[0][0], corners[0][1] - 18, tw, 18);
+  ctx.fillStyle = '#0a0c11';
+  ctx.fillText(lbl, corners[0][0] + pad, corners[0][1] - 5);
+}
+function clearOverlay() {
+  overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height);
+}
+
+// ── ENGINES ──────────────────────────────────────────────────────
 const ENGINES = {
   tess_fast: {
     name: 'Tesseract.js — fast',
@@ -439,30 +598,44 @@ const ENGINES = {
     },
   },
 
-  paddle: {
-    name: 'PaddleOCR (PP-OCR)',
-    sub: 'gutenye/ocr-browser · onnxruntime-web · ~10MB',
+  paddle_v4: {
+    name: 'PaddleOCR — PP-OCRv4',
+    sub: 'esearch-ocr + xulihang/paddleocr-browser models · onnxruntime-web · ~12MB',
     color: 'ok',
-    ocr: null, loadMs: null, loaded: false,
+    paddle: null, loadMs: null, loaded: false,
     async init(onProg) {
-      onProg('importing package…');
-      // gutenye/ocr-browser bundles PP-OCR ONNX detector + recognizer.
-      const mod = await import('https://esm.sh/@gutenye/ocr-browser@1.5.1');
-      onProg('loading PP-OCR models…');
+      onProg('loading OpenCV.js…');
+      const cv = await ensureCv();
+      onProg('loading onnxruntime-web…');
+      const ort = await ensureOrt();
+      onProg('importing esearch-ocr…');
+      const Paddle = await import('https://cdn.jsdelivr.net/npm/esearch-ocr@5.1.5/dist/esearch-ocr.js');
+      onProg('downloading PP-OCRv4 models…');
+      const assets = 'https://cdn.jsdelivr.net/npm/paddleocr-browser/dist/';
+      const dic = await (await fetch(assets + 'ppocr_keys_v1.txt')).text();
       const t0 = performance.now();
-      const Ocr = mod.default ?? mod.Ocr ?? mod;
-      this.ocr = await Ocr.create();
+      await Paddle.init({
+        detPath: assets + 'ppocr_det.onnx',
+        recPath: assets + 'ppocr_rec.onnx',
+        dic,
+        ort,
+        node: false,
+        cv,
+      });
+      this.paddle = Paddle;
       this.loadMs = performance.now() - t0;
       this.loaded = true;
     },
     async run(canvas) {
+      const dataUrl = canvas.toDataURL('image/png');
       const t0 = performance.now();
-      const result = await this.ocr.detect(canvas);
+      const r = await this.paddle.ocr(dataUrl);
       const recMs = performance.now() - t0;
-      const lines = Array.isArray(result) ? result : [];
-      const text = lines.map(r => r.text || '').join('\n').trim();
+      // esearch-ocr returns { line: [{text, mean, ...}, ...] } or array
+      const lines = Array.isArray(r) ? r : (r?.line ?? []);
+      const text = lines.map(l => l.text || '').join('\n').trim();
       const meanScore = lines.length
-        ? (lines.reduce((s, r) => s + (r.score || r.mean || 0), 0) / lines.length * 100).toFixed(1) + '%'
+        ? (lines.reduce((s, l) => s + (l.mean || l.score || 0), 0) / lines.length * 100).toFixed(1) + '%'
         : '—';
       return {
         text,
@@ -471,6 +644,43 @@ const ENGINES = {
           ['recognize', recMs.toFixed(0) + 'ms'],
           ['lines', String(lines.length)],
           ['mean score', meanScore],
+        ],
+      };
+    },
+  },
+
+  paddle_v5: {
+    name: 'PaddleOCR — PP-OCRv5',
+    sub: 'ppu-paddle-ocr (PP-OCRv5 mobile) · ~15MB',
+    color: 'green',
+    service: null, loadMs: null, loaded: false,
+    async init(onProg) {
+      onProg('importing ppu-paddle-ocr…');
+      const mod = await import('https://esm.sh/ppu-paddle-ocr@5.1.1/web');
+      const Svc = mod.PaddleOcrService || mod.default?.PaddleOcrService || mod.default;
+      if (!Svc) throw new Error('PaddleOcrService export not found');
+      onProg('initializing (downloads PP-OCRv5 mobile models on first run)…');
+      const t0 = performance.now();
+      this.service = new Svc({ debugging: { debug: false, verbose: false } });
+      await this.service.initialize();
+      this.loadMs = performance.now() - t0;
+      this.loaded = true;
+    },
+    async run(canvas) {
+      const t0 = performance.now();
+      const r = await this.service.recognize(canvas);
+      const recMs = performance.now() - t0;
+      // ppu-paddle-ocr returns { text, lines: [...] }
+      const text = (r?.text ?? '').trim() || (Array.isArray(r?.lines)
+        ? r.lines.map(l => l.text || '').join('\n').trim()
+        : '');
+      const lineCount = Array.isArray(r?.lines) ? r.lines.length : (text ? text.split('\n').length : 0);
+      return {
+        text,
+        stats: [
+          ['load', (this.loadMs ?? 0).toFixed(0) + 'ms'],
+          ['recognize', recMs.toFixed(0) + 'ms'],
+          ['lines', String(lineCount)],
         ],
       };
     },
@@ -651,7 +861,7 @@ document.getElementById('engineGrid').addEventListener('click', async e => {
   }
 });
 
-// ── main capture flow (no auto-OCR) ──────────────────────────────
+// ── main capture flow ────────────────────────────────────────────
 $('captureBtn').addEventListener('click', async () => {
   if (!frameSource) return;
   $('captureBtn').disabled = true;
@@ -659,34 +869,37 @@ $('captureBtn').addEventListener('click', async () => {
     setStatus('Capturing frame…', 'work');
     const frame = captureFrame(frameSource);
 
-    await ensureDetector();
-    setStatus('Detecting book…', 'work');
+    setStatus('Loading OpenCV.js…', 'work');
+    const cv = await ensureCv();
+
+    setStatus('Detecting spine (oriented)…', 'work');
     const t0 = performance.now();
-    const preds = await detector.detect(frame);
+    const rect = detectSpineRect(cv, frame);
     const detectMs = performance.now() - t0;
-    const book = preds.filter(p => p.class === 'book').sort((a, b) => b.score - a.score)[0];
 
     let cropCanvas, fallback = false;
-    if (book) {
-      drawDetection(book.bbox, book.score);
-      cropCanvas = cropFrom(frame, book.bbox, 8);
+    if (rect) {
+      lastDetectedRect = rect;
+      drawRotatedRect(rect);
+      cropCanvas = rotatedCrop(cv, frame, rect);
       $('bookMeta').textContent =
-        `${Math.round(book.bbox[2])}×${Math.round(book.bbox[3])}px · score ${(book.score * 100).toFixed(1)}% · detect ${detectMs.toFixed(0)}ms`;
+        `${Math.round(rect.size.width)}×${Math.round(rect.size.height)}px · angle ${rect.angle.toFixed(1)}° · detect ${detectMs.toFixed(0)}ms`;
     } else {
       fallback = true;
       cropCanvas = frame;
+      lastDetectedRect = null;
       clearOverlay();
-      $('bookMeta').textContent = `no book detected — using full frame · detect ${detectMs.toFixed(0)}ms`;
+      $('bookMeta').textContent = `no spine detected — using full frame · detect ${detectMs.toFixed(0)}ms`;
     }
     $('bookCrop').src = cropCanvas.toDataURL('image/png');
 
-    const { canvas: ocrInput, rotated } = rotateIfPortrait(cropCanvas);
+    const { canvas: ocrInput, rotated } = rotateCCWIfPortrait(cropCanvas);
+    currentCrop = ocrInput;
     $('ocrCrop').src = ocrInput.toDataURL('image/png');
     $('ocrMeta').textContent = `${ocrInput.width}×${ocrInput.height}px${rotated ? ' · rotated 90° CCW' : ''}`;
     $('crops').hidden = false;
-    currentCrop = ocrInput;
 
-    // clear stale results from previous capture but keep loaded models
+    // clear stale results, keep loaded models
     for (const id of Object.keys(ENGINES)) {
       setEngineResult(id, '', []);
       setEngineState(id, ENGINES[id].loaded ? 'ready (model cached)' : 'idle');
@@ -696,8 +909,8 @@ $('captureBtn').addEventListener('click', async () => {
     }
 
     setStatus(fallback
-      ? 'No book detected — captured full frame. Pick an OCR engine to run.'
-      : 'Book captured. Pick an OCR engine to run.', 'ok');
+      ? 'No spine detected — captured full frame. Pick an OCR engine to run.'
+      : `Spine detected at ${rect.angle.toFixed(1)}°. Pick an OCR engine to run.`, 'ok');
   } catch (e) {
     console.error(e);
     setStatus('Error: ' + (e.message || e), 'err');
@@ -706,11 +919,19 @@ $('captureBtn').addEventListener('click', async () => {
   }
 });
 
-// keep overlay sized to stage on resize
+// ── flip 180° ────────────────────────────────────────────────────
+$('flipBtn').addEventListener('click', () => {
+  if (!currentCrop) return;
+  currentCrop = flip180(currentCrop);
+  $('ocrCrop').src = currentCrop.toDataURL('image/png');
+});
+
+// keep overlay sized to stage on resize, and redraw rect if any
 new ResizeObserver(() => {
   const r = stage.getBoundingClientRect();
   overlay.width = r.width;
   overlay.height = r.height;
+  if (lastDetectedRect) drawRotatedRect(lastDetectedRect);
 }).observe(stage);
 </script>
 </body>
