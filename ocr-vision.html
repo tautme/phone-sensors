@@ -226,10 +226,10 @@
 
 <details>
   <summary>Notes &amp; caveats</summary>
-  <p><b>Detection:</b> uses TF.js COCO-SSD (lite_mobilenet_v2). The COCO <code>book</code> class is trained mostly on books seen face-on, but generally fires on spine-out books too. If detection misses, the full frame is used as fallback.</p>
-  <p><b>Rotation:</b> if the cropped region is taller than wide (typical for spine-out books with vertical text), it's auto-rotated 90&deg; clockwise before OCR. If results look reversed, try re-capturing with the book flipped, or re-orient the phone.</p>
+  <p><b>Detection:</b> uses TF.js COCO-SSD (lite_mobilenet_v2). The COCO <code>book</code> class is trained mostly on books seen face-on, but generally fires on spine-out books too. If detection misse[...]
+  <p><b>Rotation:</b> if the cropped region is taller than wide (typical for spine-out books with vertical text), it's auto-rotated 90&deg; clockwise before OCR. If results look reversed, try re-captu[...]
   <p><b>Tesseract</b> is fast, runs well offline after a one-time language data download, and produces per-word confidence. It can struggle with stylized type and tight letter spacing.</p>
-  <p><b>TrOCR</b> is a transformer model trained for printed text lines &mdash; usually better on stylized typography but slower and ~25&times; the download. The small variant is single-line; multi-line spines may produce just the dominant line.</p>
+  <p><b>TrOCR</b> is a transformer model trained for printed text lines &mdash; usually better on stylized typography but slower and ~25&times; the download. The small variant is single-line; multi-li[...]
   <p><b>Both run client-side</b>; nothing leaves the device. First run downloads model weights (browser cache makes subsequent loads fast).</p>
 </details>
 
@@ -387,8 +387,8 @@ function rotateIfPortrait(canvas) {
   out.width = canvas.height;
   out.height = canvas.width;
   const ctx = out.getContext('2d');
-  ctx.translate(out.width, 0);
-  ctx.rotate(Math.PI / 2);
+  ctx.translate(0, out.height);
+  ctx.rotate(-Math.PI / 2);
   ctx.drawImage(canvas, 0, 0);
   return { canvas: out, rotated: true };
 }
@@ -477,7 +477,7 @@ $('captureBtn').addEventListener('click', async () => {
 
     const { canvas: ocrInput, rotated } = rotateIfPortrait(cropCanvas);
     $('ocrCrop').src = ocrInput.toDataURL('image/png');
-    $('ocrMeta').textContent = `${ocrInput.width}×${ocrInput.height}px${rotated ? ' · rotated 90° CW' : ''}`;
+    $('ocrMeta').textContent = `${ocrInput.width}×${ocrInput.height}px${rotated ? ' · rotated 90° CCW' : ''}`;
     $('crops').hidden = false;
 
     setStatus(fallback
