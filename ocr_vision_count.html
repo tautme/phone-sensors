@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta http-equiv="Permissions-Policy" content="camera=*">
+<title>ocr-vision · multi-spine OCR</title>
+<style>
+  :root {
+    --bg: #0d0e10;
+    --panel: #15171b;
+    --panel-2: #1c1f25;
+    --line: #262a32;
+    --fg: #e7e9ec;
+    --dim: #8b909a;
+    --hot: #ffba54;
+    --cool: #5fb8ff;
+    --ok: #8fde7a;
+    --bad: #ff7a78;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Charter", "Georgia", serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body {
+    font: 14px/1.5 var(--mono);
+    padding: 18px max(14px, env(safe-area-inset-left)) max(18px, env(safe-area-inset-bottom));
+    max-width: 980px;
+    margin: 0 auto;
+  }
+  header { border-bottom: 1px dashed var(--line); padding-bottom: 12px; margin-bottom: 16px; }
+  h1 {
+    font: 600 22px/1.1 var(--serif);
+    letter-spacing: -0.01em;
+    margin: 0 0 4px;
+  }
+  h1 .tag {
+    font: 500 11px/1 var(--mono);
+    color: var(--hot);
+    border: 1px solid var(--hot);
+    padding: 3px 6px;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-left: 6px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .lede { color: var(--dim); margin: 0; font-size: 13px; }
+
+  .pipeline {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin: 10px 0 0;
+    font-size: 11px; color: var(--dim);
+  }
+  .pipeline span {
+    padding: 3px 8px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: var(--panel);
+  }
+  .pipeline span.on { color: var(--ok); border-color: var(--ok); }
+  .pipeline span.work { color: var(--hot); border-color: var(--hot); }
+
+  .controls { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0 12px; }
+  button, label.btn {
+    background: var(--panel);
+    color: var(--fg);
+    border: 1px solid var(--line);
+    padding: 8px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font: 500 13px/1 var(--mono);
+    letter-spacing: 0.02em;
+    transition: border-color 120ms, background 120ms, color 120ms;
+  }
+  button:hover, label.btn:hover { border-color: var(--cool); }
+  button.primary { background: var(--cool); color: #0a0c11; border-color: var(--cool); }
+  button.primary:hover { filter: brightness(1.1); }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  input[type=file] { display: none; }
+
+  .stage {
+    position: relative;
+    background: #000;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+    aspect-ratio: 4/3;
+    width: 100%;
+    max-width: 720px;
+  }
+  .stage video, .stage > img.loaded {
+    width: 100%; height: 100%; object-fit: contain; display: block; background: #000;
+  }
+  .stage canvas.overlay {
+    position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;
+  }
+  .stage .placeholder {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.2em;
+  }
+
+  .status {
+    margin: 12px 0;
+    color: var(--dim);
+    font-size: 12px;
+    min-height: 1.4em;
+    border-left: 2px solid var(--line);
+    padding: 2px 10px;
+  }
+  .status.work { border-left-color: var(--hot); color: var(--hot); }
+  .status.ok { border-left-color: var(--ok); color: var(--ok); }
+  .status.err { border-left-color: var(--bad); color: var(--bad); }
+
+  /* ── Stage 3: spine carousel ───────────────────────── */
+  .carousel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px;
+    margin: 14px 0 12px;
+  }
+  .car-head {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px;
+  }
+  .car-count {
+    font: 600 13px/1 var(--serif);
+  }
+  .car-count b { color: var(--hot); font-family: var(--mono); font-size: 16px; }
+  .car-nav { display: flex; gap: 6px; align-items: center; }
+  .car-nav button {
+    padding: 4px 12px; font-size: 14px; font-weight: 600; min-width: 36px;
+  }
+  .car-idx { font-size: 11px; color: var(--dim); min-width: 50px; text-align: center; }
+
+  .thumbs {
+    display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px;
+    scrollbar-width: thin;
+  }
+  .thumb {
+    flex: 0 0 auto;
+    position: relative;
+    border: 2px solid var(--line);
+    border-radius: 3px;
+    cursor: pointer;
+    background: #000;
+    transition: border-color 120ms, transform 120ms;
+  }
+  .thumb img { display: block; height: 60px; width: auto; max-width: 200px; }
+  .thumb.active { border-color: var(--cool); transform: translateY(-2px); }
+  .thumb .num {
+    position: absolute; top: 2px; left: 2px;
+    background: rgba(0,0,0,0.75);
+    color: #fff;
+    font: 600 10px/1 var(--mono);
+    padding: 2px 5px;
+    border-radius: 2px;
+  }
+  .thumb.has-results::after {
+    content: '✓';
+    position: absolute; top: 2px; right: 2px;
+    color: var(--ok);
+    font-size: 11px;
+    background: rgba(0,0,0,0.75);
+    padding: 1px 4px;
+    border-radius: 2px;
+  }
+
+  /* ── Selected spine preview ────────────────────────── */
+  .preview {
+    display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap;
+    margin: 12px 0;
+  }
+  .preview-img {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 8px;
+    flex: 0 0 auto;
+  }
+  .preview-img .label {
+    font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.15em;
+    margin-bottom: 6px;
+  }
+  .preview-img img {
+    display: block;
+    max-width: 100%;
+    width: auto;
+    max-height: 120px;
+    background: #000; border-radius: 2px;
+  }
+  .preview-img .meta { font-size: 11px; color: var(--dim); margin-top: 6px; }
+  .preview-img .actions { display: flex; gap: 6px; margin-top: 8px; }
+  .preview-img .actions button { padding: 5px 10px; font-size: 11px; }
+
+  /* ── Engine grid ──────────────────────────────────── */
+  .apply-bar {
+    display: flex; align-items: center; gap: 10px; margin-top: 16px;
+    padding: 8px 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  .apply-bar .apply-label { color: var(--dim); }
+  .apply-bar .toggle {
+    display: flex; gap: 0;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .apply-bar .toggle button {
+    padding: 5px 12px;
+    font-size: 11px;
+    border: none;
+    background: transparent;
+    color: var(--dim);
+    border-radius: 0;
+  }
+  .apply-bar .toggle button.on {
+    background: var(--cool);
+    color: #0a0c11;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .engine {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 14px;
+    position: relative;
+    overflow: hidden;
+  }
+  .engine::before {
+    content: '';
+    position: absolute; top: -1px; left: 14px; width: 36px; height: 2px;
+    background: var(--cool);
+  }
+  .engine[data-color="cool"]::before { background: var(--cool); }
+  .engine[data-color="hot"]::before { background: var(--hot); }
+  .engine[data-color="ok"]::before { background: var(--ok); }
+  .engine[data-color="purple"]::before { background: #b07cff; }
+  .engine[data-color="green"]::before { background: #5fdba0; }
+
+  .engine .head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px;
+  }
+  .engine .meta-block .name { font: 600 14px/1.2 var(--serif); }
+  .engine .meta-block .sub { font-size: 11px; color: var(--dim); margin-top: 2px; }
+  .engine .run-btn {
+    flex: 0 0 auto;
+    padding: 6px 14px;
+    font-size: 12px;
+    min-width: 64px;
+    text-align: center;
+  }
+  .engine .run-btn.busy { color: var(--hot); border-color: var(--hot); }
+
+  .engine .state { font-size: 11px; color: var(--dim); margin-bottom: 8px; min-height: 1.2em; word-break: break-word; }
+  .engine .state b { color: var(--fg); font-weight: 600; }
+  .engine .state.work b { color: var(--hot); }
+  .engine .state.done b { color: var(--ok); }
+  .engine .state.err b { color: var(--bad); }
+  .engine .state.stale b { color: var(--dim); font-style: italic; }
+  .progress {
+    height: 3px; background: var(--line); border-radius: 2px; margin: -4px 0 8px; overflow: hidden;
+    display: none;
+  }
+  .progress.show { display: block; }
+  .progress .bar { height: 100%; width: 0%; background: var(--hot); transition: width 100ms; }
+
+  .engine pre {
+    background: #0a0b0e;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 10px;
+    margin: 0 0 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    min-height: 4em;
+    font: 13px/1.45 var(--mono);
+    color: var(--fg);
+  }
+  .engine pre.empty { color: var(--dim); }
+  .engine pre.stale { opacity: 0.45; }
+  .stats { font-size: 11px; color: var(--dim); display: flex; gap: 14px; flex-wrap: wrap; }
+  .stats span b { color: var(--fg); font-weight: 600; }
+
+  details { margin-top: 18px; border-top: 1px dashed var(--line); padding-top: 14px; color: var(--dim); font-size: 12px; }
+  details summary { cursor: pointer; color: var(--fg); }
+  details p { margin: 8px 0; }
+  details code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+
+  footer { color: var(--dim); font-size: 11px; margin-top: 24px; padding-top: 12px; border-top: 1px dashed var(--line); }
+  footer a { color: var(--cool); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ocr&#8209;vision <span class="tag">multi-spine</span></h1>
+  <p class="lede">Pipeline: detect oriented bounding boxes &rarr; rotate each &rarr; count &rarr; OCR per spine.</p>
+  <div class="pipeline" id="pipeline">
+    <span data-stage="detect">1 · detect</span>
+    <span data-stage="rotate">2 · rotate</span>
+    <span data-stage="count">3 · count</span>
+    <span data-stage="ocr">4 · ocr</span>
+  </div>
+</header>
+
+<div class="controls">
+  <button id="startBtn" class="primary">Start camera</button>
+  <label class="btn" for="fileInput">Upload image</label>
+  <input type="file" id="fileInput" accept="image/*">
+  <button id="captureBtn" disabled>Capture &amp; detect</button>
+</div>
+
+<div class="stage" id="stage">
+  <div class="placeholder" id="placeholder">camera off</div>
+  <video id="video" playsinline muted autoplay style="display:none"></video>
+  <img id="uploaded" alt="" style="display:none">
+  <canvas class="overlay" id="overlay"></canvas>
+</div>
+
+<div class="status" id="status">Ready. Start camera or upload an image.</div>
+
+<div class="carousel" id="carousel" hidden>
+  <div class="car-head">
+    <div class="car-count"><b id="spineCount">0</b> spines detected</div>
+    <div class="car-nav">
+      <button id="prevSpine" title="previous">‹</button>
+      <span class="car-idx" id="spineIdxLabel">—</span>
+      <button id="nextSpine" title="next">›</button>
+    </div>
+  </div>
+  <div class="thumbs" id="spineThumbs"></div>
+</div>
+
+<div class="preview" id="preview" hidden>
+  <div class="preview-img">
+    <div class="label">Selected spine — OCR input</div>
+    <img id="ocrCrop" alt="">
+    <div class="meta" id="ocrMeta"></div>
+    <div class="actions">
+      <button id="flipBtn" title="rotate 180° in place">Flip 180°</button>
+    </div>
+  </div>
+</div>
+
+<div class="apply-bar" id="applyBar" hidden>
+  <span class="apply-label">Apply Run to:</span>
+  <div class="toggle" id="applyToggle">
+    <button data-mode="selected" class="on">selected spine</button>
+    <button data-mode="all">all spines (batch)</button>
+  </div>
+</div>
+
+<div class="grid" id="engineGrid"></div>
+
+<details>
+  <summary>Notes &amp; caveats</summary>
+  <p><b>Stage 1 — detect</b>: OpenCV.js Canny + contours + <code>minAreaRect</code>, scored by area·rectangularity·aspect, NMS at IoU&gt;0.3. Sorted left-to-right with row tolerance for multi-shelf shots.</p>
+  <p><b>Stage 2 — rotate</b>: per-spine <code>warpAffine</code> deskew + 90° CCW for portraits.</p>
+  <p><b>Stage 3 — count</b>: numbered overlays match thumbnail indices.</p>
+  <p><b>Stage 4 — OCR</b>: per-engine lazy load; results cached per-spine. Toggle <i>Apply to all</i> to batch-run an engine across every spine sequentially.</p>
+  <p><b>Flip 180°</b>: classical CV can't tell which end of a spine is "top of title." Manual flip handles the 50/50 ambiguity. Existing OCR results dim to indicate they're now stale relative to the flipped input.</p>
+</details>
+
+<footer>
+  Part of the <a href="https://tautme.github.io/phone-sensors/">phone-sensors</a> collection. HTTPS required. MIT.
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
+
+<script type="module">
+const $ = id => document.getElementById(id);
+
+const video = $('video');
+const uploaded = $('uploaded');
+const placeholder = $('placeholder');
+const overlay = $('overlay');
+const stage = $('stage');
+
+let stream = null;
+let frameSource = null;
+let lastFrame = null;            // captured frame (for redraw)
+let spines = [];                 // [{rect, crop, ocrInput, results: {[engineId]: {text, stats}}}]
+let selectedIdx = 0;
+let applyMode = 'selected';      // 'selected' | 'all'
+
+// ── pipeline indicator ────────────────────────────────────────────
+function setStage(stage, mode) {
+  document.querySelectorAll('#pipeline span').forEach(el => {
+    if (el.dataset.stage === stage) {
+      el.className = mode || '';
+    } else if (mode === 'on') {
+      // earlier stages remain green; later stages reset
+    }
+  });
+}
+function resetPipeline() {
+  document.querySelectorAll('#pipeline span').forEach(el => el.className = '');
+}
+
+function setStatus(msg, kind = '') {
+  const el = $('status');
+  el.textContent = msg;
+  el.className = 'status' + (kind ? ' ' + kind : '');
+}
+
+// ── input sources ────────────────────────────────────────────────
+async function startCamera() {
+  uploaded.style.display = 'none';
+  uploaded.classList.remove('loaded');
+  placeholder.style.display = 'none';
+  video.style.display = '';
+  try {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 960 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    frameSource = video;
+    $('captureBtn').disabled = false;
+    setStatus('Camera live. Frame the bookshelf and tap Capture & detect.');
+  } catch (e) {
+    placeholder.style.display = '';
+    placeholder.textContent = 'camera blocked';
+    setStatus('Camera failed: ' + e.message, 'err');
+  }
+}
+$('startBtn').addEventListener('click', startCamera);
+
+$('fileInput').addEventListener('change', e => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.srcObject = null;
+  video.style.display = 'none';
+  placeholder.style.display = 'none';
+  const url = URL.createObjectURL(file);
+  uploaded.onload = () => {
+    uploaded.classList.add('loaded');
+    uploaded.style.display = '';
+    frameSource = uploaded;
+    $('captureBtn').disabled = false;
+    setStatus('Image loaded. Tap Capture & detect.');
+  };
+  uploaded.src = url;
+});
+
+// ── lazy loaders ─────────────────────────────────────────────────
+let cvPromise = null;
+function ensureCv() {
+  if (cvPromise) return cvPromise;
+  cvPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.async = true;
+    s.src = 'https://docs.opencv.org/4.10.0/opencv.js';
+    s.onload = () => {
+      const wait = () => {
+        if (window.cv && window.cv.Mat) return resolve(window.cv);
+        if (window.cv && typeof window.cv.then === 'function') {
+          window.cv.then(c => resolve(c)).catch(reject); return;
+        }
+        setTimeout(wait, 50);
+      };
+      if (window.cv && !window.cv.Mat) {
+        window.cv.onRuntimeInitialized = () => resolve(window.cv);
+      }
+      wait();
+    };
+    s.onerror = () => reject(new Error('failed to load opencv.js'));
+    document.head.appendChild(s);
+  });
+  return cvPromise;
+}
+
+let ortPromise = null;
+function ensureOrt() {
+  if (ortPromise) return ortPromise;
+  ortPromise = new Promise((resolve, reject) => {
+    if (window.ort) return resolve(window.ort);
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js';
+    s.onload = () => resolve(window.ort);
+    s.onerror = () => reject(new Error('failed to load onnxruntime-web'));
+    document.head.appendChild(s);
+  });
+  return ortPromise;
+}
+
+// ── STAGE 1: detect (multi-spine) ────────────────────────────────
+function captureFrame(source) {
+  const c = document.createElement('canvas');
+  const w = source.videoWidth || source.naturalWidth;
+  const h = source.videoHeight || source.naturalHeight;
+  if (!w || !h) throw new Error('source has no dimensions yet');
+  c.width = w; c.height = h;
+  c.getContext('2d').drawImage(source, 0, 0, w, h);
+  return c;
+}
+
+function rectAABB(rect) {
+  const cx = rect.center.x, cy = rect.center.y;
+  const w = rect.size.width / 2, h = rect.size.height / 2;
+  const a = rect.angle * Math.PI / 180;
+  const ca = Math.cos(a), sa = Math.sin(a);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of [[-w,-h],[w,-h],[w,h],[-w,h]]) {
+    const px = cx + x*ca - y*sa, py = cy + x*sa + y*ca;
+    if (px < minX) minX = px; if (px > maxX) maxX = px;
+    if (py < minY) minY = py; if (py > maxY) maxY = py;
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+function iou(r1, r2) {
+  const b1 = rectAABB(r1), b2 = rectAABB(r2);
+  const x1 = Math.max(b1.x, b2.x), y1 = Math.max(b1.y, b2.y);
+  const x2 = Math.min(b1.x + b1.w, b2.x + b2.w), y2 = Math.min(b1.y + b1.h, b2.y + b2.h);
+  if (x2 <= x1 || y2 <= y1) return 0;
+  const inter = (x2 - x1) * (y2 - y1);
+  return inter / (b1.w * b1.h + b2.w * b2.h - inter);
+}
+
+function detectSpines(cv, srcCanvas) {
+  const MAX_DIM = 1024;
+  const scale = Math.min(1, MAX_DIM / Math.max(srcCanvas.width, srcCanvas.height));
+  let work = srcCanvas;
+  if (scale < 1) {
+    work = document.createElement('canvas');
+    work.width = Math.round(srcCanvas.width * scale);
+    work.height = Math.round(srcCanvas.height * scale);
+    work.getContext('2d').drawImage(srcCanvas, 0, 0, work.width, work.height);
+  }
+
+  const src = cv.imread(work);
+  const gray = new cv.Mat();
+  const edges = new cv.Mat();
+  const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
+  const contours = new cv.MatVector();
+  const hierarchy = new cv.Mat();
+
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
+  cv.Canny(gray, edges, 50, 150);
+  cv.dilate(edges, edges, kernel);
+  cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+  const totalArea = src.rows * src.cols;
+  const candidates = [];
+
+  for (let i = 0; i < contours.size(); i++) {
+    const c = contours.get(i);
+    const area = cv.contourArea(c);
+    if (area < totalArea * 0.005) { c.delete(); continue; }    // looser min for multi
+    const rect = cv.minAreaRect(c);
+    const w = rect.size.width, h = rect.size.height;
+    if (w < 8 || h < 8) { c.delete(); continue; }
+    const longSide = Math.max(w, h), shortSide = Math.min(w, h);
+    const aspect = longSide / shortSide;
+    if (aspect < 1.6 || aspect > 30) { c.delete(); continue; }
+    const rectArea = w * h;
+    const rectangularity = area / rectArea;
+    if (rectangularity < 0.55) { c.delete(); continue; }
+    const score = area * rectangularity * Math.min(aspect, 8);
+    candidates.push({
+      rect: {
+        center: { x: rect.center.x, y: rect.center.y },
+        size:   { width: w, height: h },
+        angle:  rect.angle,
+      },
+      score,
+    });
+    c.delete();
+  }
+
+  src.delete(); gray.delete(); edges.delete();
+  kernel.delete(); contours.delete(); hierarchy.delete();
+
+  // NMS
+  candidates.sort((a, b) => b.score - a.score);
+  const kept = [];
+  for (const cand of candidates) {
+    let suppress = false;
+    for (const k of kept) {
+      if (iou(cand.rect, k.rect) > 0.3) { suppress = true; break; }
+    }
+    if (!suppress) kept.push(cand);
+  }
+
+  // Scale rects back to source pixels
+  const inv = scale < 1 ? 1 / scale : 1;
+  const out = kept.map(k => ({
+    center: { x: k.rect.center.x * inv, y: k.rect.center.y * inv },
+    size:   { width: k.rect.size.width * inv, height: k.rect.size.height * inv },
+    angle:  k.rect.angle,
+  }));
+
+  // Sort: rows top-to-bottom, then left-to-right within row
+  out.sort((a, b) => {
+    const dy = a.center.y - b.center.y;
+    const tol = Math.min(
+      Math.min(a.size.width, a.size.height),
+      Math.min(b.size.width, b.size.height)
+    );
+    if (Math.abs(dy) < tol) return a.center.x - b.center.x;
+    return dy;
+  });
+
+  return out;
+}
+
+// ── STAGE 2: rotate (per spine) ──────────────────────────────────
+function rotatedCrop(cv, srcCanvas, rect) {
+  const src = cv.imread(srcCanvas);
+  const center = new cv.Point(rect.center.x, rect.center.y);
+  const M = cv.getRotationMatrix2D(center, rect.angle, 1.0);
+  const rotated = new cv.Mat();
+  const dsize = new cv.Size(src.cols, src.rows);
+  cv.warpAffine(
+    src, rotated, M, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT,
+    new cv.Scalar(0, 0, 0, 255)
+  );
+  const w = Math.round(rect.size.width);
+  const h = Math.round(rect.size.height);
+  const pad = 6;
+  const x = Math.max(0, Math.round(rect.center.x - w / 2) - pad);
+  const y = Math.max(0, Math.round(rect.center.y - h / 2) - pad);
+  const rw = Math.min(rotated.cols - x, w + 2 * pad);
+  const rh = Math.min(rotated.rows - y, h + 2 * pad);
+  const cropped = rotated.roi(new cv.Rect(x, y, rw, rh));
+  const out = document.createElement('canvas');
+  cv.imshow(out, cropped);
+  src.delete(); M.delete(); rotated.delete(); cropped.delete();
+  return out;
+}
+
+function rotateCCWIfPortrait(canvas) {
+  if (canvas.height <= canvas.width * 1.1) return { canvas, rotated: false };
+  const out = document.createElement('canvas');
+  out.width = canvas.height;
+  out.height = canvas.width;
+  const ctx = out.getContext('2d');
+  ctx.translate(0, out.height);
+  ctx.rotate(-Math.PI / 2);
+  ctx.drawImage(canvas, 0, 0);
+  return { canvas: out, rotated: true };
+}
+function flip180(canvas) {
+  const out = document.createElement('canvas');
+  out.width = canvas.width; out.height = canvas.height;
+  const ctx = out.getContext('2d');
+  ctx.translate(out.width, out.height);
+  ctx.rotate(Math.PI);
+  ctx.drawImage(canvas, 0, 0);
+  return out;
+}
+
+// ── overlay drawing (numbered, multi) ────────────────────────────
+function drawAllRects() {
+  if (!frameSource) return;
+  const sw = frameSource.videoWidth || frameSource.naturalWidth;
+  const sh = frameSource.videoHeight || frameSource.naturalHeight;
+  const r = stage.getBoundingClientRect();
+  overlay.width = r.width; overlay.height = r.height;
+  const ratio = Math.min(r.width / sw, r.height / sh);
+  const dw = sw * ratio, dh = sh * ratio;
+  const ox = (r.width - dw) / 2, oy = (r.height - dh) / 2;
+
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  ctx.font = 'bold 13px ui-monospace, Menlo, monospace';
+
+  spines.forEach((spine, i) => {
+    const rect = spine.rect;
+    const cx = rect.center.x, cy = rect.center.y;
+    const w = rect.size.width / 2, h = rect.size.height / 2;
+    const a = rect.angle * Math.PI / 180;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const corners = [[-w,-h],[w,-h],[w,h],[-w,h]].map(([x,y]) => [
+      ox + (cx + x*ca - y*sa) * ratio,
+      oy + (cy + x*sa + y*ca) * ratio,
+    ]);
+
+    const isSel = i === selectedIdx;
+    ctx.lineWidth = isSel ? 3 : 1.5;
+    ctx.strokeStyle = isSel ? '#5fb8ff' : 'rgba(143,222,122,0.7)';
+    ctx.fillStyle = isSel ? 'rgba(95,184,255,0.18)' : 'rgba(143,222,122,0.06)';
+    ctx.beginPath();
+    for (let k = 0; k < 4; k++) {
+      const [x, y] = corners[k];
+      if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+
+    // number badge at corner 0
+    const lbl = String(i + 1);
+    const pad = 4, tw = ctx.measureText(lbl).width + pad * 2;
+    ctx.fillStyle = isSel ? '#5fb8ff' : '#8fde7a';
+    ctx.fillRect(corners[0][0] - 1, corners[0][1] - 18, tw, 18);
+    ctx.fillStyle = '#0a0c11';
+    ctx.fillText(lbl, corners[0][0] - 1 + pad, corners[0][1] - 5);
+  });
+}
+function clearOverlay() { overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height); }
+
+// ── STAGE 3: count + carousel ────────────────────────────────────
+function renderCarousel() {
+  $('spineCount').textContent = String(spines.length);
+  $('spineIdxLabel').textContent = spines.length ? `${selectedIdx + 1} / ${spines.length}` : '—';
+  const thumbs = $('spineThumbs');
+  thumbs.innerHTML = '';
+  spines.forEach((spine, i) => {
+    const div = document.createElement('div');
+    div.className = 'thumb' + (i === selectedIdx ? ' active' : '');
+    if (Object.keys(spine.results).length) div.classList.add('has-results');
+    div.dataset.idx = String(i);
+    const num = document.createElement('span');
+    num.className = 'num';
+    num.textContent = String(i + 1);
+    const img = document.createElement('img');
+    img.src = spine.ocrInput.toDataURL('image/jpeg', 0.6);
+    div.appendChild(num);
+    div.appendChild(img);
+    thumbs.appendChild(div);
+  });
+}
+$('spineThumbs').addEventListener('click', e => {
+  const t = e.target.closest('.thumb');
+  if (!t) return;
+  selectSpine(parseInt(t.dataset.idx, 10));
+});
+$('prevSpine').addEventListener('click', () => selectSpine(selectedIdx - 1));
+$('nextSpine').addEventListener('click', () => selectSpine(selectedIdx + 1));
+
+function selectSpine(i) {
+  if (!spines.length) return;
+  selectedIdx = (i + spines.length) % spines.length;
+  const spine = spines[selectedIdx];
+  $('ocrCrop').src = spine.ocrInput.toDataURL('image/png');
+  $('ocrMeta').textContent =
+    `${spine.ocrInput.width}×${spine.ocrInput.height}px · angle ${spine.rect.angle.toFixed(1)}°` +
+    (spine.flipped ? ' · flipped' : '');
+  $('spineIdxLabel').textContent = `${selectedIdx + 1} / ${spines.length}`;
+  document.querySelectorAll('.thumb').forEach((el, idx) => {
+    el.classList.toggle('active', idx === selectedIdx);
+  });
+  drawAllRects();
+  renderEngineCardsForSelectedSpine();
+}
+
+// ── flip 180° on selected spine ──────────────────────────────────
+$('flipBtn').addEventListener('click', () => {
+  if (!spines.length) return;
+  const spine = spines[selectedIdx];
+  spine.ocrInput = flip180(spine.ocrInput);
+  spine.flipped = !spine.flipped;
+  // mark all cached results as stale
+  for (const id in spine.results) spine.results[id].stale = true;
+  $('ocrCrop').src = spine.ocrInput.toDataURL('image/png');
+  $('ocrMeta').textContent =
+    `${spine.ocrInput.width}×${spine.ocrInput.height}px · angle ${spine.rect.angle.toFixed(1)}°` +
+    (spine.flipped ? ' · flipped' : '');
+  // refresh thumbnail
+  const tImg = document.querySelector(`.thumb[data-idx="${selectedIdx}"] img`);
+  if (tImg) tImg.src = spine.ocrInput.toDataURL('image/jpeg', 0.6);
+  renderEngineCardsForSelectedSpine();
+});
+
+// ── STAGE 4: ENGINES (same set as before) ────────────────────────
+const ENGINES = {
+  tess_fast: {
+    name: 'Tesseract.js — fast',
+    sub: 'v5 · eng (fast trained data) · ~11MB · CPU',
+    color: 'cool',
+    worker: null, loadMs: null, loaded: false,
+    async init(onProg) {
+      onProg('downloading lang data…');
+      const t0 = performance.now();
+      this.worker = await Tesseract.createWorker('eng', 1, {
+        langPath: 'https://tessdata.projectnaptha.com/4.0.0_fast',
+      });
+      this.loadMs = performance.now() - t0;
+      this.loaded = true;
+    },
+    async run(canvas) {
+      const t0 = performance.now();
+      const { data } = await this.worker.recognize(canvas);
+      const recMs = performance.now() - t0;
+      return {
+        text: data.text.trim(),
+        stats: [
+          ['load', (this.loadMs ?? 0).toFixed(0) + 'ms'],
+          ['recognize', recMs.toFixed(0) + 'ms'],
+          ['confidence', (data.confidence ?? 0).toFixed(1) + '%'],
+          ['words', String(data.words?.length ?? 0)],
+        ],
+      };
+    },
+  },
+  tess_best: {
+    name: 'Tesseract.js — best',
+    sub: 'v5 · eng (best trained data) · ~25MB · CPU',
+    color: 'cool',
+    worker: null, loadMs: null, loaded: false,
+    async init(onProg) {
+      onProg('downloading lang data…');
+      const t0 = performance.now();
+      this.worker = await Tesseract.createWorker('eng', 1, {
+        langPath: 'https://tessdata.projectnaptha.com/4.0.0_best',
+      });
+      this.loadMs = performance.now() - t0;
+      this.loaded = true;
+    },
+    async run(canvas) {
+      const t0 = performance.now();
+      const { data } = await this.worker.recognize(canvas);
+      const recMs = performance.now() - t0;
+      return {
+        text: data.text.trim(),
+        stats: [
+          ['load', (this.loadMs ?? 0).toFixed(0) + 'ms'],
+          ['recognize', recMs.toFixed(0) + 'ms'],
+          ['confidence', (data.confidence ?? 0).toFixed(1) + '%'],
+          ['words', String(data.words?.length ?? 0)],
+        ],
+      };
+    },
+  },
+  paddle_v4: {
+    name: 'PaddleOCR — PP-OCRv4',
+    sub: 'esearch-ocr + paddleocr-browser models · onnxruntime-web · ~12MB',
+    color: 'ok',
+    paddle: null, loadMs: null, loaded: false,
+    async init(onProg) {
+      onProg('loading OpenCV.js…'); const cv = await ensureCv();
+      onProg('loading onnxruntime-web…'); const ort = await ensureOrt();
+      onProg('importing esearch-ocr…');
+      const Paddle = await import('https://cdn.jsdelivr.net/npm/esearch-ocr@5.1.5/dist/esearch-ocr.js');
+      onProg('downloading PP-OCRv4 models…');
+      const assets = 'https://cdn.jsdelivr.net/npm/paddleocr-browser/dist/';
+      const dic = await (await fetch(assets + 'ppocr_keys_v1.txt')).text();
+      const t0 = performance.now();
+      await Paddle.init({
+        detPath: assets + 'ppocr_det.onnx',
+        recPath: assets + 'ppocr_rec.onnx',
+        dic, ort, node: false, cv,
+      });
+      this.paddle = Paddle;
+      this.loadMs = performance.now() - t0;
+      this.loaded = true;
+    },
+    async run(canvas) {
+      const dataUrl = canvas.toDataURL('image/png');
+      const t0 = performance.now();
+      const r = await this.paddle.ocr(dataUrl);
+      const recMs = performance.now() - t0;
+      const lines = Array.isArray(r) ? r : (r?.line ?? []);
+      const text = lines.map(l => l.text || '').join('\n').trim();
+      const meanScore = lines.length
+        ? (lines.reduce((s, l) => s + (l.mean || l.score || 0), 0) / lines.length * 100).toFixed(1) + '%'
+        : '—';
+      return {
+        text,
+        stats: [
+          ['load', (this.loadMs ?? 0).toFixed(0) + 'ms'],
+          ['recognize', recMs.toFixed(0) + 'ms'],
+          ['lines', String(lines.length)],
+          ['mean score', meanScore],
+        ],
+      };
+    },
+  },
+  paddle_v5: {
+    name: 'PaddleOCR — PP-OCRv5',
+    sub: 'ppu-paddle-ocr (mobile) · ~15MB',
+    color: 'green',
+    service: null, loadMs: null, loaded: false,
+    async init(onProg) {
+      onProg('importing ppu-paddle-ocr…');
+      const mod = await import('https://esm.sh/ppu-paddle-ocr@5.1.1/web');
+      const Svc = mod.PaddleOcrService || mod.default?.PaddleOcrService || mod.default;
+      if (!Svc) throw new Error('PaddleOcrService export not found');
+      onProg('initializing (downloads PP-OCRv5 models on first run)…');
+      const t0 = performance.now();
+      this.service = new Svc({ debugging: { debug: false, verbose: false } });
+      await this.service.initialize();
+      this.loadMs = performance.now() - t0;
+      this.loaded = true;
+    },
+    async run(canvas) {
+      const t0 = performance.now();
+      const r = await this.service.recognize(canvas);
+      const recMs = performance.now() - t0;
+      const text = (r?.text ?? '').trim() || (Array.isArray(r?.lines)
+        ? r.lines.map(l => l.text || '').join('\n').trim() : '');
+      const lineCount = Array.isArray(r?.lines) ? r.lines.length : (text ? text.split('\n').length : 0);
+      return {
+        text,
+        stats: [
+          ['load', (this.loadMs ?? 0).toFixed(0) + 'ms'],
+          ['recognize', recMs.toFixed(0) + 'ms'],
+          ['lines', String(lineCount)],
+        ],
+      };
+    },
+  },
+  trocr_printed: {
+    name: 'TrOCR — printed',
+    sub: 'transformers.js · trocr-small-printed · q8 · ~120MB',
+    color: 'hot',
+    pipe: null, loadMs: null, loaded: false,
+    async init(onProg) {
+      onProg('importing transformers.js…');
+      const tf = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2');
+      onProg('downloading model (first run only)…');
+      const t0 = performance.now();
+      this.pipe = await tf.pipeline('image-to-text', 'Xenova/trocr-small-printed', {
+        dtype: 'q8',
+        progress_callback: (p) => {
+          if (p && p.status === 'progress' && typeof p.progress === 'number') {
+            onProg(`${p.file ?? 'model'}: ${p.progress.toFixed(0)}%`, p.progress);
+          } else if (p && p.status) onProg(p.status + (p.file ? ': ' + p.file : ''));
+        },
+      });
+      this.loadMs = performance.now() - t0;
+      this.loaded = true;
+    },
+    async run(canvas) {
+      const dataUrl = canvas.toDataURL('image/png');
+      const t0 = performance.now();
+      const out = await this.pipe(dataUrl);
+      const recMs = performance.now() - t0;
+      return {
+        text: (out?.[0]?.generated_text ?? '').trim(),
+        stats: [
+          ['load', (this.loadMs ?? 0).toFixed(0) + 'ms'],
+          ['recognize', recMs.toFixed(0) + 'ms'],
+        ],
+      };
+    },
+  },
+  trocr_handwritten: {
+    name: 'TrOCR — handwritten',
+    sub: 'transformers.js · trocr-small-handwritten · q8 · ~120MB',
+    color: 'purple',
+    pipe: null, loadMs: null, loaded: false,
+    async init(onProg) {
+      onProg('importing transformers.js…');
+      const tf = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2');
+      onProg('downloading model (first run only)…');
+      const t0 = performance.now();
+      this.pipe = await tf.pipeline('image-to-text', 'Xenova/trocr-small-handwritten', {
+        dtype: 'q8',
+        progress_callback: (p) => {
+          if (p && p.status === 'progress' && typeof p.progress === 'number') {
+            onProg(`${p.file ?? 'model'}: ${p.progress.toFixed(0)}%`, p.progress);
+          } else if (p && p.status) onProg(p.status + (p.file ? ': ' + p.file : ''));
+        },
+      });
+      this.loadMs = performance.now() - t0;
+      this.loaded = true;
+    },
+    async run(canvas) {
+      const dataUrl = canvas.toDataURL('image/png');
+      const t0 = performance.now();
+      const out = await this.pipe(dataUrl);
+      const recMs = performance.now() - t0;
+      return {
+        text: (out?.[0]?.generated_text ?? '').trim(),
+        stats: [
+          ['load', (this.loadMs ?? 0).toFixed(0) + 'ms'],
+          ['recognize', recMs.toFixed(0) + 'ms'],
+        ],
+      };
+    },
+  },
+};
+
+// ── engine card render ───────────────────────────────────────────
+function renderEngines() {
+  const grid = $('engineGrid');
+  grid.innerHTML = '';
+  for (const [id, eng] of Object.entries(ENGINES)) {
+    const el = document.createElement('div');
+    el.className = 'engine';
+    el.dataset.engineId = id;
+    el.dataset.color = eng.color || 'cool';
+    el.innerHTML = `
+      <div class="head">
+        <div class="meta-block">
+          <div class="name"></div>
+          <div class="sub"></div>
+        </div>
+        <button class="run-btn" data-action="run">Run</button>
+      </div>
+      <div class="state">Status: <b>idle</b></div>
+      <div class="progress"><div class="bar"></div></div>
+      <pre class="result empty">&mdash;</pre>
+      <div class="stats"></div>
+    `;
+    el.querySelector('.name').textContent = eng.name;
+    el.querySelector('.sub').textContent = eng.sub;
+    grid.appendChild(el);
+  }
+}
+renderEngines();
+
+function setEngineState(id, label, kind = '') {
+  const el = document.querySelector(`[data-engine-id="${id}"] .state`);
+  if (!el) return;
+  el.innerHTML = 'Status: <b>' + label + '</b>';
+  el.className = 'state' + (kind ? ' ' + kind : '');
+}
+function setEngineProgress(id, percent) {
+  const wrap = document.querySelector(`[data-engine-id="${id}"] .progress`);
+  const bar = wrap?.querySelector('.bar');
+  if (!wrap || !bar) return;
+  if (percent == null) { wrap.classList.remove('show'); bar.style.width = '0%'; }
+  else { wrap.classList.add('show'); bar.style.width = Math.max(0, Math.min(100, percent)) + '%'; }
+}
+function setEngineResult(id, text, stats, stale = false) {
+  const pre = document.querySelector(`[data-engine-id="${id}"] .result`);
+  const stEl = document.querySelector(`[data-engine-id="${id}"] .stats`);
+  if (!pre || !stEl) return;
+  if (text && text.trim()) {
+    pre.textContent = text;
+    pre.classList.remove('empty');
+  } else {
+    pre.textContent = '(no text returned)';
+    pre.classList.add('empty');
+  }
+  pre.classList.toggle('stale', stale);
+  stEl.innerHTML = stats.map(([k, v]) => `<span>${k}: <b>${v}</b></span>`).join('');
+}
+
+function renderEngineCardsForSelectedSpine() {
+  const spine = spines[selectedIdx];
+  for (const id of Object.keys(ENGINES)) {
+    const cached = spine?.results?.[id];
+    if (cached) {
+      setEngineState(id, cached.stale ? 'cached (stale after flip)' : 'cached', cached.stale ? 'stale' : 'done');
+      setEngineResult(id, cached.text, cached.stats, !!cached.stale);
+    } else {
+      setEngineState(id, ENGINES[id].loaded ? 'ready (model cached)' : 'idle');
+      setEngineResult(id, '', [], false);
+    }
+    setEngineProgress(id, null);
+    const btn = document.querySelector(`[data-engine-id="${id}"] .run-btn`);
+    if (btn) btn.textContent = ENGINES[id].loaded ? 'Re-run' : 'Run';
+  }
+}
+
+// ── apply mode toggle ────────────────────────────────────────────
+$('applyToggle').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-mode]');
+  if (!btn) return;
+  applyMode = btn.dataset.mode;
+  document.querySelectorAll('#applyToggle button').forEach(b => {
+    b.classList.toggle('on', b.dataset.mode === applyMode);
+  });
+});
+
+// ── engine run handler ───────────────────────────────────────────
+async function runEngineOnSpine(engineId, spineIdx, statusPrefix = '') {
+  const engine = ENGINES[engineId];
+  const spine = spines[spineIdx];
+  if (!engine.loaded) {
+    await engine.init((msg, percent) => {
+      setEngineState(engineId, statusPrefix + msg, 'work');
+      if (typeof percent === 'number') setEngineProgress(engineId, percent);
+      else setEngineProgress(engineId, null);
+    });
+    setEngineProgress(engineId, null);
+  }
+  setEngineState(engineId, statusPrefix + 'recognizing…', 'work');
+  const result = await engine.run(spine.ocrInput);
+  spine.results[engineId] = { ...result, stale: false };
+  // mark thumbnail with checkmark
+  const t = document.querySelector(`.thumb[data-idx="${spineIdx}"]`);
+  if (t) t.classList.add('has-results');
+  return result;
+}
+
+document.getElementById('engineGrid').addEventListener('click', async e => {
+  const btn = e.target.closest('button[data-action="run"]');
+  if (!btn) return;
+  const card = btn.closest('.engine');
+  const id = card.dataset.engineId;
+  if (!ENGINES[id] || !spines.length) return;
+
+  btn.disabled = true; btn.classList.add('busy'); btn.textContent = '…';
+  try {
+    if (applyMode === 'all') {
+      // Batch over all spines
+      for (let i = 0; i < spines.length; i++) {
+        const prefix = `[${i + 1}/${spines.length}] `;
+        // Show running spine in the carousel
+        selectSpine(i);
+        try {
+          const res = await runEngineOnSpine(id, i, prefix);
+          setEngineResult(id, res.text, res.stats, false);
+          setEngineState(id, prefix + 'done', 'done');
+        } catch (err) {
+          console.error(`[${id}] spine ${i + 1}`, err);
+          setEngineState(id, prefix + 'error: ' + (err?.message || err), 'err');
+          // continue rather than abort
+        }
+      }
+      setEngineState(id, `done · ${spines.length} spines`, 'done');
+    } else {
+      // Selected only
+      const res = await runEngineOnSpine(id, selectedIdx);
+      setEngineState(id, 'done', 'done');
+      setEngineResult(id, res.text, res.stats, false);
+    }
+  } catch (err) {
+    console.error(`[${id}]`, err);
+    setEngineState(id, 'error: ' + (err?.message || err), 'err');
+    setEngineResult(id, 'Error: ' + (err?.message || err), [], false);
+    setEngineProgress(id, null);
+  } finally {
+    btn.disabled = false; btn.classList.remove('busy');
+    btn.textContent = ENGINES[id].loaded ? 'Re-run' : 'Run';
+  }
+});
+
+// ── main capture flow ────────────────────────────────────────────
+$('captureBtn').addEventListener('click', async () => {
+  if (!frameSource) return;
+  $('captureBtn').disabled = true;
+  resetPipeline();
+  try {
+    setStatus('Capturing frame…', 'work');
+    lastFrame = captureFrame(frameSource);
+
+    setStatus('Loading OpenCV.js…', 'work');
+    const cv = await ensureCv();
+
+    // Stage 1: detect
+    setStage('detect', 'work');
+    setStatus('Detecting spines…', 'work');
+    const t0 = performance.now();
+    const rects = detectSpines(cv, lastFrame);
+    const detectMs = performance.now() - t0;
+    setStage('detect', 'on');
+
+    if (!rects.length) {
+      setStatus(`No spines detected in ${detectMs.toFixed(0)}ms. Try a clearer shot.`, 'err');
+      $('carousel').hidden = true;
+      $('preview').hidden = true;
+      $('applyBar').hidden = true;
+      spines = [];
+      clearOverlay();
+      return;
+    }
+
+    // Stage 2: rotate (per spine)
+    setStage('rotate', 'work');
+    setStatus(`Rotating ${rects.length} spine${rects.length > 1 ? 's' : ''}…`, 'work');
+    spines = rects.map(rect => {
+      const crop = rotatedCrop(cv, lastFrame, rect);
+      const { canvas: ocrInput } = rotateCCWIfPortrait(crop);
+      return { rect, crop, ocrInput, results: {}, flipped: false };
+    });
+    setStage('rotate', 'on');
+
+    // Stage 3: count
+    setStage('count', 'work');
+    selectedIdx = 0;
+    drawAllRects();
+    $('carousel').hidden = false;
+    $('preview').hidden = false;
+    $('applyBar').hidden = false;
+    renderCarousel();
+    selectSpine(0);
+    setStage('count', 'on');
+
+    // Stage 4: ready (engines run on demand)
+    setStage('ocr', '');
+    setStatus(`Detected ${spines.length} spine${spines.length > 1 ? 's' : ''} in ${detectMs.toFixed(0)}ms. Pick an engine to run.`, 'ok');
+  } catch (e) {
+    console.error(e);
+    setStatus('Error: ' + (e.message || e), 'err');
+  } finally {
+    $('captureBtn').disabled = false;
+  }
+});
+
+new ResizeObserver(() => {
+  const r = stage.getBoundingClientRect();
+  overlay.width = r.width;
+  overlay.height = r.height;
+  if (spines.length) drawAllRects();
+}).observe(stage);
+</script>
+</body>
+</html>
