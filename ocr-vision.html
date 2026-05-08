@@ -233,10 +233,10 @@
   <summary>Notes &amp; caveats</summary>
   <p><b>Why per-engine Run buttons:</b> loading all engines at once on mobile crashes the tab. Each engine loads on first Run; subsequent runs reuse the loaded model.</p>
   <p><b>Detection:</b> TF.js COCO-SSD (lite_mobilenet_v2). The COCO <code>book</code> class generally fires on spine-out books. If detection misses, the full frame is used.</p>
-  <p><b>Rotation:</b> if the crop is taller than wide (typical for spine-out text), it's auto-rotated 90&deg; clockwise before OCR. If results look reversed, re-capture with the book flipped.</p>
+  <p><b>Rotation:</b> if the crop is taller than wide (typical for spine-out text), it's auto-rotated 90&deg; counter-clockwise before OCR. If results look reversed, re-capture with the book flipped.</p>
   <p><b>Tesseract Fast vs Best:</b> same library, different trained data files. Fast (~11MB) prioritizes speed; Best (~25MB) prioritizes accuracy. Both run fully offline once cached.</p>
-  <p><b>PaddleOCR</b> via <code>@gutenye/ocr-browser</code> wraps PP-OCR ONNX models (~10MB total) with onnxruntime-web. Often strong on stylized type and short text. Models load from the package's CDN on first run.</p>
-  <p><b>TrOCR</b> models are transformer-based and produce the best results on stylized printed text or handwriting, but are ~120MB even quantized (q8). Choose printed for typeset spines, handwritten for cursive / hand-lettered ones.</p>
+  <p><b>PaddleOCR</b> via <code>@gutenye/ocr-browser</code> wraps PP-OCR ONNX models (~10MB total) with onnxruntime-web. Often strong on stylized type and short text. Models load from the package's CD[...]
+  <p><b>TrOCR</b> models are transformer-based and produce the best results on stylized printed text or handwriting, but are ~120MB even quantized (q8). Choose printed for typeset spines, handwri[...]
   <p><b>All client-side.</b> Nothing leaves the device. First run downloads weights (browser cache makes subsequent loads near-instant).</p>
 </details>
 
@@ -369,8 +369,8 @@ function rotateIfPortrait(canvas) {
   const out = document.createElement('canvas');
   out.width = canvas.height; out.height = canvas.width;
   const ctx = out.getContext('2d');
-  ctx.translate(out.width, 0);
-  ctx.rotate(Math.PI / 2);
+  ctx.translate(0, out.height);
+  ctx.rotate(-Math.PI / 2);
   ctx.drawImage(canvas, 0, 0);
   return { canvas: out, rotated: true };
 }
@@ -682,7 +682,7 @@ $('captureBtn').addEventListener('click', async () => {
 
     const { canvas: ocrInput, rotated } = rotateIfPortrait(cropCanvas);
     $('ocrCrop').src = ocrInput.toDataURL('image/png');
-    $('ocrMeta').textContent = `${ocrInput.width}×${ocrInput.height}px${rotated ? ' · rotated 90° CW' : ''}`;
+    $('ocrMeta').textContent = `${ocrInput.width}×${ocrInput.height}px${rotated ? ' · rotated 90° CCW' : ''}`;
     $('crops').hidden = false;
     currentCrop = ocrInput;
 
