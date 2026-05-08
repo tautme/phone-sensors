@@ -12,11 +12,12 @@
   button { padding: .5rem 1rem; font-size: 1rem; cursor: pointer; }
   button:disabled { opacity: .5; cursor: not-allowed; }
   #wrap { position: relative; display: inline-block; line-height: 0; max-width: 100%; }
-  #video, #overlay {
-    width: 100%; max-width: 480px; height: auto;
-    border-radius: 6px; background: #000; display: block;
-  }
-  #overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
+#video, #overlay {
+  width: 100%; max-width: 480px; height: auto;
+  border-radius: 6px; display: block;
+}
+#video { background: #000; }
+#overlay { position: absolute; top: 0; left: 0; pointer-events: none; background: transparent; }
   #live { font-family: monospace; font-size: 1.1rem; min-height: 1.6em; }
   #out { font-family: monospace; font-size: 1rem; white-space: pre-wrap; word-break: break-word;
          min-height: 6em; max-height: 18em; overflow-y: auto;
