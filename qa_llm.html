@@ -10,6 +10,8 @@
     --muted: #666;
     --accent: #c4541c;
     --accent-bg: #fff3e8;
+    --pa: #6a1b9a;
+    --pa-bg: #f3e5f5;
     --border: #ddd;
     --hl: #fff59d;
     --hl-active: #ffd54f;
@@ -29,14 +31,31 @@
     background: white;
     border-bottom: 1px solid var(--border);
     display: flex;
-    gap: 12px;
+    gap: 10px;
     align-items: center;
     flex-wrap: wrap;
+    font-size: 13px;
   }
-  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header h1 { font-size: 16px; margin: 0 6px 0 0; font-weight: 600; }
   header .status { font-size: 12px; color: var(--muted); }
   header .status.ready { color: #2a7a2a; }
   header .status.error { color: #b22; }
+  header select, header input[type=file] {
+    font-size: 12px;
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: white;
+    max-width: 280px;
+  }
+  .backend-tag {
+    font-size: 10px;
+    background: #eef;
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: #335;
+    font-family: monospace;
+  }
   main {
     flex: 1;
     display: grid;
@@ -44,10 +63,7 @@
     overflow: hidden;
     min-height: 0;
   }
-  #docPane, #qaPane {
-    overflow: auto;
-    padding: 16px 20px;
-  }
+  #docPane, #qaPane { overflow: auto; padding: 16px 20px; }
   #docPane {
     border-right: 1px solid var(--border);
     background: white;
@@ -60,10 +76,7 @@
     line-height: 1.55;
     margin: 0;
   }
-  #docPane .empty {
-    color: var(--muted);
-    font-style: italic;
-  }
+  #docPane .empty { color: var(--muted); font-style: italic; }
   mark.quote {
     background: var(--hl);
     padding: 1px 2px;
@@ -71,17 +84,10 @@
     cursor: pointer;
     scroll-margin-top: 20px;
   }
-  mark.quote.active {
-    background: var(--hl-active);
-    box-shadow: 0 0 0 2px var(--accent);
-  }
+  mark.quote.pa { background: var(--pa-bg); border-bottom: 2px solid var(--pa); }
+  mark.quote.active { background: var(--hl-active); box-shadow: 0 0 0 2px var(--accent); }
+  mark.quote.pa.active { background: #e1bee7; box-shadow: 0 0 0 2px var(--pa); }
   #qaPane { background: var(--bg); }
-  .controls {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
-    flex-wrap: wrap;
-  }
   textarea#question {
     width: 100%;
     min-height: 60px;
@@ -92,11 +98,17 @@
     border-radius: 4px;
     resize: vertical;
   }
+  .controls {
+    display: flex;
+    gap: 6px;
+    margin: 8px 0 12px;
+    flex-wrap: wrap;
+  }
   button {
     background: var(--accent);
     color: white;
     border: none;
-    padding: 8px 14px;
+    padding: 7px 12px;
     border-radius: 4px;
     cursor: pointer;
     font-size: 13px;
@@ -108,7 +120,7 @@
     color: var(--fg);
     border: 1px solid var(--border);
   }
-  input[type=file] { font-size: 12px; }
+  button.pa-btn { background: var(--pa); }
   .qa-item {
     background: white;
     border: 1px solid var(--border);
@@ -116,11 +128,14 @@
     padding: 12px 14px;
     margin-bottom: 12px;
   }
+  .qa-item.pa-card { border-left: 3px solid var(--pa); }
   .qa-item .q {
     font-weight: 600;
     margin-bottom: 8px;
     color: var(--accent);
+    font-size: 13px;
   }
+  .qa-item.pa-card .q { color: var(--pa); }
   .qa-item .a {
     line-height: 1.55;
     font-size: 14px;
@@ -143,12 +158,52 @@
     cursor: pointer;
     font-family: monospace;
   }
-  .citations .cite:hover { background: var(--accent); color: white; }
+  .pa-card .citations .cite,
+  .pa-instance .cite {
+    background: var(--pa-bg);
+    border-color: var(--pa);
+    color: var(--pa);
+  }
+  .citations .cite:hover { filter: brightness(0.9); }
   .citations .cite.missing {
     border-color: #b22;
     color: #b22;
     background: #fee;
   }
+  .pa-instance {
+    margin: 10px 0;
+    padding: 8px 10px;
+    background: var(--pa-bg);
+    border-left: 3px solid var(--pa);
+    border-radius: 0 4px 4px 0;
+    font-size: 13px;
+  }
+  .pa-instance .quote-text {
+    font-style: italic;
+    color: #4a148c;
+    margin-bottom: 4px;
+  }
+  .pa-instance .why {
+    color: #333;
+    font-size: 12px;
+    margin-top: 4px;
+  }
+  details.pa-explainer {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+  details.pa-explainer summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--pa);
+  }
+  details.pa-explainer h4 { margin: 12px 0 4px; font-size: 13px; }
+  details.pa-explainer ul { margin: 4px 0; padding-left: 18px; }
+  details.pa-explainer li { margin: 2px 0; line-height: 1.5; }
   .raw-toggle {
     font-size: 11px;
     color: var(--muted);
@@ -165,6 +220,8 @@
     font-size: 11px;
     white-space: pre-wrap;
     border-radius: 3px;
+    max-height: 200px;
+    overflow: auto;
   }
   .qa-item.open .raw { display: block; }
   #progress {
@@ -183,7 +240,7 @@
   .hint {
     font-size: 12px;
     color: var(--muted);
-    margin: 4px 0 12px;
+    margin: 0 0 8px;
   }
 </style>
 </head>
@@ -192,8 +249,10 @@
 <header>
   <h1>📄 Doc Q&A</h1>
   <input type="file" id="fileInput" accept=".txt,.html,.md,.json,.csv">
+  <select id="modelSelect" title="Select model"></select>
   <button class="ghost" id="loadModelBtn">Load model</button>
   <span class="status" id="status">No model loaded</span>
+  <span class="backend-tag" id="backendTag" style="display:none"></span>
 </header>
 <div id="progress"><div></div></div>
 
@@ -201,37 +260,60 @@
   <div id="docPane">
     <pre id="docContent" class="empty">Drop a text file above to get started.
 
-This works best with plain text, markdown, or HTML where you can read the body content.
-For .html files I'll strip tags and keep the visible text.</pre>
+Then pick a model and click "Load model". Smaller models load faster but reason worse.
+Plain text and markdown work best. HTML files have their tags stripped.</pre>
   </div>
 
   <div id="qaPane">
-    <div class="controls">
-      <textarea id="question" placeholder="Ask a question about the document...&#10;&#10;Example: What is the main argument? Who disagrees? Summarize the top three points."></textarea>
-    </div>
+    <textarea id="question" placeholder="Ask about the document...&#10;e.g. What's the main argument? Who disagrees? Summarize the top three points."></textarea>
     <div class="controls">
       <button id="askBtn" disabled>Ask</button>
-      <button class="ghost" id="clearBtn">Clear answers</button>
+      <button class="pa-btn" id="paBtn" disabled title="Run a subagent that scans for passive-aggressive language">🔍 Find passive-aggressive</button>
+      <button class="ghost" id="clearBtn">Clear</button>
     </div>
     <p class="hint">
-      Citations in answers become clickable badges. Click one to highlight the quoted passage on the left.
-      Click a yellow highlight on the left to jump back to the citation here.
+      Citations become clickable badges. Click one to highlight the quote on the left.
+      Click a yellow highlight on the left to jump back to its citation here.
     </p>
     <div id="answers"></div>
   </div>
 </main>
 
 <script type="module">
-import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2";
+
+env.allowLocalModels = false;
+env.useBrowserCache = true;
+
+// ---------------- Model catalog ----------------
+const MODELS = [
+  { id: "HuggingFaceTB/SmolLM2-135M-Instruct", label: "SmolLM2 135M", size: "~100MB", note: "tiniest, weakest reasoning" },
+  { id: "HuggingFaceTB/SmolLM2-360M-Instruct", label: "SmolLM2 360M", size: "~250MB", note: "tiny, more coherent" },
+  { id: "onnx-community/Qwen2.5-0.5B-Instruct", label: "Qwen2.5 0.5B", size: "~400MB", note: "good multilingual" },
+  { id: "onnx-community/Llama-3.2-1B-Instruct", label: "Llama 3.2 1B", size: "~800MB", note: "balanced" },
+  { id: "HuggingFaceTB/SmolLM2-1.7B-Instruct", label: "SmolLM2 1.7B", size: "~1.1GB", note: "best small-model quality" },
+];
+
+const sel = document.getElementById("modelSelect");
+MODELS.forEach((m, i) => {
+  const opt = document.createElement("option");
+  opt.value = m.id;
+  opt.textContent = `${m.label} (${m.size}) — ${m.note}`;
+  if (i === 0) opt.selected = true;
+  sel.appendChild(opt);
+});
 
 // ---------------- State ----------------
 let docText = "";
-let engine = null;
-let modelLoaded = false;
+let generator = null;
+let currentModelId = null;
+let currentBackend = null;
 let citationCounter = 0;
+const highlights = [];
 
 const $ = id => document.getElementById(id);
 const statusEl = $("status");
+const backendTag = $("backendTag");
 const progressBar = $("progress").firstElementChild;
 
 // ---------------- File loading ----------------
@@ -239,17 +321,16 @@ $("fileInput").addEventListener("change", async (e) => {
   const f = e.target.files[0];
   if (!f) return;
   const text = await f.text();
-  // If HTML, extract visible text
   if (f.name.endsWith(".html") || f.name.endsWith(".htm")) {
     const doc = new DOMParser().parseFromString(text, "text/html");
-    // Remove scripts/styles
     doc.querySelectorAll("script, style").forEach(el => el.remove());
     docText = doc.body ? doc.body.innerText : doc.documentElement.innerText;
   } else {
     docText = text;
   }
+  highlights.length = 0;
   renderDoc();
-  $("askBtn").disabled = !modelLoaded;
+  updateButtons();
 });
 
 function renderDoc() {
@@ -258,87 +339,283 @@ function renderDoc() {
   pre.textContent = docText;
 }
 
-// ---------------- Model loading ----------------
-const MODEL = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
+function updateButtons() {
+  const ready = !!generator && !!docText;
+  $("askBtn").disabled = !ready;
+  $("paBtn").disabled = !ready;
+}
 
+// ---------------- Model loading ----------------
 $("loadModelBtn").addEventListener("click", async () => {
-  if (modelLoaded || engine) return;
+  const modelId = sel.value;
+  if (generator && currentModelId === modelId) return;
+  if (generator) {
+    try { await generator.dispose?.(); } catch {}
+    generator = null;
+  }
   $("loadModelBtn").disabled = true;
+  sel.disabled = true;
   $("progress").classList.add("show");
-  statusEl.textContent = "Loading model (first time: ~900MB download)...";
   statusEl.className = "status";
 
-  try {
-    engine = await webllm.CreateMLCEngine(MODEL, {
-      initProgressCallback: (p) => {
-        statusEl.textContent = p.text;
-        if (p.progress != null) {
-          progressBar.style.width = (p.progress * 100) + "%";
-        }
-      }
-    });
-    modelLoaded = true;
-    statusEl.textContent = "Model ready ✓";
-    statusEl.className = "status ready";
-    $("progress").classList.remove("show");
-    $("askBtn").disabled = !docText;
-  } catch (err) {
-    console.error(err);
-    statusEl.textContent = "Model load failed: " + err.message;
-    statusEl.className = "status error";
-    $("loadModelBtn").disabled = false;
+  // Try WebGPU first if available, fall back to WASM
+  const tryConfigs = [];
+  if (navigator.gpu) {
+    tryConfigs.push({ device: "webgpu", dtype: "q4f16" });
+    tryConfigs.push({ device: "webgpu", dtype: "q4" });
   }
+  tryConfigs.push({ device: "wasm", dtype: "q4" });
+  tryConfigs.push({ device: "wasm", dtype: "q8" });
+
+  let lastErr = null;
+  for (const cfg of tryConfigs) {
+    try {
+      statusEl.textContent = `Loading ${modelId.split("/").pop()} on ${cfg.device}...`;
+      generator = await pipeline("text-generation", modelId, {
+        ...cfg,
+        progress_callback: (p) => {
+          if (p.status === "progress" && p.progress != null) {
+            progressBar.style.width = p.progress + "%";
+            statusEl.textContent = `Downloading ${p.file || ""}: ${p.progress.toFixed(0)}%`;
+          } else if (p.status === "ready") {
+            statusEl.textContent = "Ready";
+          } else if (p.status === "loading") {
+            statusEl.textContent = p.file ? `Fetching ${p.file}` : "Loading...";
+          }
+        }
+      });
+      currentModelId = modelId;
+      currentBackend = cfg.device + "/" + cfg.dtype;
+      break;
+    } catch (err) {
+      console.warn(`Failed with ${cfg.device}/${cfg.dtype}:`, err);
+      lastErr = err;
+      generator = null;
+    }
+  }
+
+  $("progress").classList.remove("show");
+  $("loadModelBtn").disabled = false;
+  sel.disabled = false;
+
+  if (!generator) {
+    statusEl.textContent = "Load failed: " + (lastErr?.message || "unknown");
+    statusEl.className = "status error";
+    backendTag.style.display = "none";
+    return;
+  }
+
+  statusEl.textContent = "Model ready ✓";
+  statusEl.className = "status ready";
+  backendTag.style.display = "inline";
+  backendTag.textContent = currentBackend;
+  updateButtons();
 });
 
-// ---------------- Asking ----------------
+// ---------------- Generation helper ----------------
+async function generate(messages, maxTokens = 512, temperature = 0.3) {
+  const out = await generator(messages, {
+    max_new_tokens: maxTokens,
+    temperature,
+    do_sample: temperature > 0,
+    return_full_text: false,
+  });
+  const last = out[0].generated_text;
+  if (Array.isArray(last)) {
+    return last.at(-1).content;
+  }
+  return last;
+}
+
+function truncateDoc(maxChars = 4000) {
+  if (docText.length <= maxChars) return docText;
+  return docText.slice(0, maxChars) + "\n\n[...document truncated for model context window...]";
+}
+
+// ---------------- Q&A flow ----------------
 $("askBtn").addEventListener("click", async () => {
   const q = $("question").value.trim();
-  if (!q || !docText || !engine) return;
-
+  if (!q || !docText || !generator) return;
   $("askBtn").disabled = true;
+  $("paBtn").disabled = true;
   statusEl.textContent = "Thinking...";
 
-  // Truncate very large docs to fit context. ~3000 chars is safe-ish for 1B models.
-  const MAX_DOC = 6000;
-  const docForPrompt = docText.length > MAX_DOC
-    ? docText.slice(0, MAX_DOC) + "\n\n[...document truncated for model context...]"
-    : docText;
+  const sys = `Answer questions about a document. Respond with JSON only:
+{"answer": "...", "citations": ["exact verbatim quote from doc", ...]}
+Citations must be exact substrings from the document, 5-25 words each. Use 1-4 citations.`;
 
-  const sys = `You answer questions about a document the user provides. You MUST respond with valid JSON only, no other text, in this exact shape:
-{"answer": "your answer here", "citations": ["exact verbatim quote from the document", "another exact quote"]}
-Each citation MUST be a verbatim substring of the document — copy text exactly, including punctuation. Keep quotes short (5-25 words). Use 1-4 citations. If you cannot find supporting text, return an empty citations array.`;
-
-  const user = `DOCUMENT:\n${docForPrompt}\n\nQUESTION: ${q}\n\nRespond with JSON only.`;
+  const user = `DOCUMENT:\n${truncateDoc()}\n\nQUESTION: ${q}\n\nJSON only:`;
 
   try {
-    const reply = await engine.chat.completions.create({
-      messages: [
-        { role: "system", content: sys },
-        { role: "user", content: user }
-      ],
-      temperature: 0.3,
-      max_tokens: 600
-    });
-    const raw = reply.choices[0].message.content;
+    const raw = await generate([
+      { role: "system", content: sys },
+      { role: "user", content: user }
+    ], 600, 0.3);
     renderAnswer(q, raw);
     statusEl.textContent = "Model ready ✓";
   } catch (err) {
     console.error(err);
     renderAnswer(q, JSON.stringify({ answer: "Error: " + err.message, citations: [] }));
     statusEl.textContent = "Error during inference";
+    statusEl.className = "status error";
   } finally {
-    $("askBtn").disabled = false;
+    updateButtons();
   }
 });
 
-// ---------------- Rendering answers + citations ----------------
+// ---------------- Passive-aggressive subagent ----------------
+$("paBtn").addEventListener("click", async () => {
+  if (!docText || !generator) return;
+  $("askBtn").disabled = true;
+  $("paBtn").disabled = true;
+  statusEl.textContent = "Subagent scanning for passive-aggressive language...";
+
+  renderPAExplainer();
+
+  const sys = `You detect passive-aggressive communication in text. Passive-aggressive means indirect hostility: sarcasm, snide remarks, backhanded comments, mock politeness, condescension disguised as advice, dismissive minimization, or dig-and-deny patterns.
+
+Respond with JSON only:
+{"instances": [{"quote": "exact verbatim text from document", "type": "sarcasm | backhanded | condescension | dismissive | snide | mock-polite | other", "explanation": "brief reason this is passive-aggressive"}]}
+
+Each quote MUST be an exact substring from the document, 5-30 words. Find 2-6 of the clearest examples. If none found, return empty instances array.`;
+
+  const user = `DOCUMENT:\n${truncateDoc()}\n\nFind passive-aggressive comments. JSON only:`;
+
+  try {
+    const raw = await generate([
+      { role: "system", content: sys },
+      { role: "user", content: user }
+    ], 800, 0.3);
+    renderPAResults(raw);
+    statusEl.textContent = "Model ready ✓";
+  } catch (err) {
+    console.error(err);
+    renderAnswer("Find passive-aggressive comments", JSON.stringify({ answer: "Error: " + err.message, citations: [] }));
+    statusEl.textContent = "Error during inference";
+    statusEl.className = "status error";
+  } finally {
+    updateButtons();
+  }
+});
+
+function renderPAExplainer() {
+  if (document.querySelector(".pa-explainer")) return;
+  const card = document.createElement("details");
+  card.className = "pa-explainer";
+  card.open = true;
+  card.innerHTML = `
+    <summary>How passive-aggressive communication works (and how it's controlled)</summary>
+    <h4>The mechanism</h4>
+    <p>Someone feels a negative emotion — anger, resentment, frustration, contempt — but direct expression feels unsafe (fear of conflict, social cost, power imbalance, or learned avoidance). The hostility leaks out indirectly: through sarcasm, ambiguity, "jokes," tone, or strategic withdrawal. Crucially, plausible deniability is preserved. If called out, the person can retreat behind "I was just kidding" or "I never said that." The recipient feels the hostility but cannot directly address it without seeming paranoid or thin-skinned.</p>
+    <h4>Common patterns</h4>
+    <ul>
+      <li><strong>Sarcasm masquerading as agreement</strong> — "Oh, brilliant idea."</li>
+      <li><strong>Backhanded compliments</strong> — "That's actually pretty good for you."</li>
+      <li><strong>Condescending advice</strong> — "Maybe you should try Googling it first."</li>
+      <li><strong>Damning with faint praise</strong> — "It's... fine, I guess."</li>
+      <li><strong>Strategic vagueness</strong> — "Some people just don't get it."</li>
+      <li><strong>Mock-polite dismissal</strong> — "Thanks for your input."</li>
+      <li><strong>Concern-trolling</strong> — "I just worry about your reasoning here."</li>
+      <li><strong>The "just saying"</strong> — Inserts a hostile claim then disclaims responsibility.</li>
+      <li><strong>Strategic incompetence / withdrawal</strong> — Doing a task badly, "forgetting," silent treatment.</li>
+    </ul>
+    <h4>How it's controlled (managing it in others)</h4>
+    <ul>
+      <li><strong>Name it calmly.</strong> "When you say X, it sounds like you're upset. Are you?" Forces the indirect hostility into the open.</li>
+      <li><strong>Don't engage with the surface.</strong> Address the implied hostility, not the literal words.</li>
+      <li><strong>Ask for directness.</strong> "If something's bothering you, I'd rather hear it straight."</li>
+      <li><strong>Refuse to play guessing games.</strong> "Fine" is not an answer; ask again.</li>
+      <li><strong>Don't reward it.</strong> Don't soothe, apologize preemptively, or chase reassurance — that reinforces the pattern.</li>
+      <li><strong>Model directness.</strong> Express your own frustrations clearly and early, before they fester.</li>
+    </ul>
+    <h4>How it's controlled (in yourself)</h4>
+    <ul>
+      <li>Notice the urge — sarcasm, snideness, or sudden "forgetting" usually signals an unmet need or unspoken grievance.</li>
+      <li>Identify what you actually want (to be heard, respected, given space, etc.).</li>
+      <li>Find a direct way to ask for it. Discomfort with directness is a skill, not a trait — it can be practiced.</li>
+      <li>Chronic patterns often mask anxiety, fear of confrontation, or unresolved resentment. Therapy helps when persistent.</li>
+    </ul>
+  `;
+  $("answers").prepend(card);
+}
+
+function renderPAResults(rawJson) {
+  const id = ++citationCounter;
+  let parsed;
+  try {
+    const cleaned = rawJson.replace(/```json\s*|```\s*$/g, "").trim();
+    const m = cleaned.match(/\{[\s\S]*\}/);
+    parsed = JSON.parse(m ? m[0] : cleaned);
+  } catch (e) {
+    parsed = { instances: [] };
+  }
+
+  const item = document.createElement("div");
+  item.className = "qa-item pa-card";
+  item.dataset.qid = id;
+
+  const qDiv = document.createElement("div");
+  qDiv.className = "q";
+  qDiv.textContent = "🔍 Passive-aggressive analysis";
+  item.appendChild(qDiv);
+
+  const instances = Array.isArray(parsed.instances) ? parsed.instances : [];
+
+  if (instances.length === 0) {
+    const aDiv = document.createElement("div");
+    aDiv.className = "a";
+    aDiv.textContent = "No clear passive-aggressive instances detected (or model output couldn't be parsed). Smaller models often miss subtle PA patterns — try a larger model from the dropdown.";
+    item.appendChild(aDiv);
+  } else {
+    const summary = document.createElement("div");
+    summary.className = "a";
+    summary.textContent = `Found ${instances.length} passive-aggressive instance${instances.length === 1 ? "" : "s"}:`;
+    item.appendChild(summary);
+
+    instances.forEach((inst, idx) => {
+      const div = document.createElement("div");
+      div.className = "pa-instance";
+      const citeId = `cite-pa-${id}-${idx}`;
+      const found = highlightInDoc(inst.quote || "", citeId, "pa");
+
+      const qt = document.createElement("div");
+      qt.className = "quote-text";
+      qt.textContent = `"${inst.quote || "(no quote)"}" `;
+      const badge = document.createElement("span");
+      badge.className = "cite";
+      badge.id = citeId;
+      badge.textContent = `[${idx + 1}]`;
+      if (!found) badge.classList.add("missing");
+      else badge.addEventListener("click", () => jumpToHighlight(citeId));
+      qt.appendChild(badge);
+      div.appendChild(qt);
+
+      if (inst.type) {
+        const t = document.createElement("div");
+        t.className = "why";
+        t.innerHTML = `<strong>Type:</strong> ${escapeHtml(inst.type)}`;
+        div.appendChild(t);
+      }
+      if (inst.explanation) {
+        const w = document.createElement("div");
+        w.className = "why";
+        w.textContent = inst.explanation;
+        div.appendChild(w);
+      }
+      item.appendChild(div);
+    });
+  }
+
+  appendRawToggle(item, rawJson);
+  $("answers").prepend(item);
+}
+
+// ---------------- Standard answer rendering ----------------
 function renderAnswer(question, rawJson) {
   const id = ++citationCounter;
   let parsed;
   try {
-    // Strip markdown fences if model wraps JSON
     const cleaned = rawJson.replace(/```json\s*|```\s*$/g, "").trim();
-    // Try to find first { ... } block
     const m = cleaned.match(/\{[\s\S]*\}/);
     parsed = JSON.parse(m ? m[0] : cleaned);
   } catch (e) {
@@ -370,26 +647,19 @@ function renderAnswer(question, rawJson) {
       cite.id = citeId;
       cite.textContent = `[${idx + 1}]`;
       cite.title = quote;
-
-      const found = highlightInDoc(quote, citeId);
+      const found = highlightInDoc(quote, citeId, "qa");
       if (!found) cite.classList.add("missing");
-
-      cite.addEventListener("click", () => {
-        if (!found) return;
-        // Clear previous active
-        document.querySelectorAll("mark.quote.active").forEach(m => m.classList.remove("active"));
-        const target = document.querySelector(`mark.quote[data-cite="${citeId}"]`);
-        if (target) {
-          target.classList.add("active");
-          target.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-      });
+      else cite.addEventListener("click", () => jumpToHighlight(citeId));
       cDiv.appendChild(cite);
     });
     item.appendChild(cDiv);
   }
 
-  // Raw JSON toggle
+  appendRawToggle(item, rawJson);
+  $("answers").prepend(item);
+}
+
+function appendRawToggle(item, rawJson) {
   const toggle = document.createElement("span");
   toggle.className = "raw-toggle";
   toggle.textContent = "show raw";
@@ -402,39 +672,37 @@ function renderAnswer(question, rawJson) {
   raw.className = "raw";
   raw.textContent = rawJson;
   item.appendChild(raw);
+}
 
-  $("answers").prepend(item);
+function jumpToHighlight(citeId) {
+  document.querySelectorAll("mark.quote.active").forEach(m => m.classList.remove("active"));
+  const target = document.querySelector(`mark.quote[data-cite="${citeId}"]`);
+  if (target) {
+    target.classList.add("active");
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 }
 
 // ---------------- Doc highlighting ----------------
-// Every time we add a citation, we re-render the doc with all highlights.
-// Highlights are tracked in this list so we can rebuild reliably.
-const highlights = []; // [{quote, citeId}]
-
-function highlightInDoc(quote, citeId) {
+function highlightInDoc(quote, citeId, kind = "qa") {
   if (!quote || quote.length < 4) return false;
-  // Try exact match first
   let idx = docText.indexOf(quote);
-  // Fuzzy fallback: collapse whitespace
   if (idx === -1) {
     const norm = s => s.replace(/\s+/g, " ").trim();
     const haystack = norm(docText);
     const needle = norm(quote);
     const ni = haystack.indexOf(needle);
     if (ni === -1) return false;
-    // Map back approximately by walking
     idx = approximateMap(docText, ni);
     if (idx === -1) return false;
-    // Use the approximate slice from original text
     quote = docText.slice(idx, idx + quote.length);
   }
-  highlights.push({ quote, citeId, start: idx });
+  highlights.push({ quote, citeId, start: idx, kind });
   rebuildDoc();
   return true;
 }
 
 function approximateMap(original, normalizedIndex) {
-  // Walk original, count non-collapsed whitespace position
   let count = 0;
   let prevWs = false;
   for (let i = 0; i < original.length; i++) {
@@ -456,9 +724,7 @@ function approximateMap(original, normalizedIndex) {
 }
 
 function rebuildDoc() {
-  // Sort highlights by start position, build innerHTML with marks
   const sorted = [...highlights].sort((a, b) => a.start - b.start);
-  // Filter overlaps: keep first, drop overlapping later
   const kept = [];
   let lastEnd = -1;
   for (const h of sorted) {
@@ -471,12 +737,12 @@ function rebuildDoc() {
   let cursor = 0;
   for (const h of kept) {
     html += escapeHtml(docText.slice(cursor, h.start));
-    html += `<mark class="quote" data-cite="${h.citeId}">${escapeHtml(docText.slice(h.start, h.start + h.quote.length))}</mark>`;
+    const cls = h.kind === "pa" ? "quote pa" : "quote";
+    html += `<mark class="${cls}" data-cite="${h.citeId}">${escapeHtml(docText.slice(h.start, h.start + h.quote.length))}</mark>`;
     cursor = h.start + h.quote.length;
   }
   html += escapeHtml(docText.slice(cursor));
   $("docContent").innerHTML = html;
-  // Rewire mark clicks (click highlight -> scroll to citation)
   document.querySelectorAll("mark.quote").forEach(m => {
     m.addEventListener("click", () => {
       const cid = m.dataset.cite;
@@ -504,485 +770,6 @@ $("clearBtn").addEventListener("click", () => {
   if (docText) renderDoc();
 });
 
-// Keyboard: Cmd/Ctrl+Enter to ask
-$("question").addEventListener("keydown", (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-    $("askBtn").click();
-  }
-});
-</script>
-</body>
-</html>  header .status { font-size: 12px; color: var(--muted); }
-  header .status.ready { color: #2a7a2a; }
-  header .status.error { color: #b22; }
-  main {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    overflow: hidden;
-    min-height: 0;
-  }
-  #docPane, #qaPane {
-    overflow: auto;
-    padding: 16px 20px;
-  }
-  #docPane {
-    border-right: 1px solid var(--border);
-    background: white;
-  }
-  #docPane pre {
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    font-family: Georgia, serif;
-    font-size: 14px;
-    line-height: 1.55;
-    margin: 0;
-  }
-  #docPane .empty {
-    color: var(--muted);
-    font-style: italic;
-  }
-  mark.quote {
-    background: var(--hl);
-    padding: 1px 2px;
-    border-radius: 2px;
-    cursor: pointer;
-    scroll-margin-top: 20px;
-  }
-  mark.quote.active {
-    background: var(--hl-active);
-    box-shadow: 0 0 0 2px var(--accent);
-  }
-  #qaPane { background: var(--bg); }
-  .controls {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
-    flex-wrap: wrap;
-  }
-  textarea#question {
-    width: 100%;
-    min-height: 60px;
-    font-family: inherit;
-    font-size: 14px;
-    padding: 8px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    resize: vertical;
-  }
-  button {
-    background: var(--accent);
-    color: white;
-    border: none;
-    padding: 8px 14px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
-  }
-  button:disabled { opacity: 0.5; cursor: not-allowed; }
-  button.ghost {
-    background: white;
-    color: var(--fg);
-    border: 1px solid var(--border);
-  }
-  input[type=file] { font-size: 12px; }
-  .qa-item {
-    background: white;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 12px 14px;
-    margin-bottom: 12px;
-  }
-  .qa-item .q {
-    font-weight: 600;
-    margin-bottom: 8px;
-    color: var(--accent);
-  }
-  .qa-item .a {
-    line-height: 1.55;
-    font-size: 14px;
-    white-space: pre-wrap;
-  }
-  .qa-item .citations {
-    margin-top: 10px;
-    border-top: 1px dashed var(--border);
-    padding-top: 8px;
-    font-size: 12px;
-  }
-  .citations .cite {
-    display: inline-block;
-    background: var(--accent-bg);
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    padding: 1px 6px;
-    border-radius: 3px;
-    margin: 2px;
-    cursor: pointer;
-    font-family: monospace;
-  }
-  .citations .cite:hover { background: var(--accent); color: white; }
-  .citations .cite.missing {
-    border-color: #b22;
-    color: #b22;
-    background: #fee;
-  }
-  .raw-toggle {
-    font-size: 11px;
-    color: var(--muted);
-    cursor: pointer;
-    margin-top: 6px;
-    display: inline-block;
-  }
-  .raw {
-    display: none;
-    background: #f4f4f0;
-    padding: 6px;
-    margin-top: 4px;
-    font-family: monospace;
-    font-size: 11px;
-    white-space: pre-wrap;
-    border-radius: 3px;
-  }
-  .qa-item.open .raw { display: block; }
-  #progress {
-    height: 3px;
-    background: var(--border);
-    overflow: hidden;
-    display: none;
-  }
-  #progress.show { display: block; }
-  #progress div {
-    height: 100%;
-    background: var(--accent);
-    width: 0;
-    transition: width 0.3s;
-  }
-  .hint {
-    font-size: 12px;
-    color: var(--muted);
-    margin: 4px 0 12px;
-  }
-</style>
-</head>
-<body>
-
-<header>
-  <h1>📄 Doc Q&A</h1>
-  <input type="file" id="fileInput" accept=".txt,.html,.md,.json,.csv">
-  <button class="ghost" id="loadModelBtn">Load model</button>
-  <span class="status" id="status">No model loaded</span>
-</header>
-<div id="progress"><div></div></div>
-
-<main>
-  <div id="docPane">
-    <pre id="docContent" class="empty">Drop a text file above to get started.
-
-This works best with plain text, markdown, or HTML where you can read the body content.
-For .html files I'll strip tags and keep the visible text.</pre>
-  </div>
-
-  <div id="qaPane">
-    <div class="controls">
-      <textarea id="question" placeholder="Ask a question about the document...&#10;&#10;Example: What is the main argument? Who disagrees? Summarize the top three points."></textarea>
-    </div>
-    <div class="controls">
-      <button id="askBtn" disabled>Ask</button>
-      <button class="ghost" id="clearBtn">Clear answers</button>
-    </div>
-    <p class="hint">
-      Citations in answers become clickable badges. Click one to highlight the quoted passage on the left.
-      Click a yellow highlight on the left to jump back to the citation here.
-    </p>
-    <div id="answers"></div>
-  </div>
-</main>
-
-<script type="module">
-import * as webllm from "https://esm.run/@mlc-ai/web-llm";
-
-// ---------------- State ----------------
-let docText = "";
-let engine = null;
-let modelLoaded = false;
-let citationCounter = 0;
-
-const $ = id => document.getElementById(id);
-const statusEl = $("status");
-const progressBar = $("progress").firstElementChild;
-
-// ---------------- File loading ----------------
-$("fileInput").addEventListener("change", async (e) => {
-  const f = e.target.files[0];
-  if (!f) return;
-  const text = await f.text();
-  // If HTML, extract visible text
-  if (f.name.endsWith(".html") || f.name.endsWith(".htm")) {
-    const doc = new DOMParser().parseFromString(text, "text/html");
-    // Remove scripts/styles
-    doc.querySelectorAll("script, style").forEach(el => el.remove());
-    docText = doc.body ? doc.body.innerText : doc.documentElement.innerText;
-  } else {
-    docText = text;
-  }
-  renderDoc();
-  $("askBtn").disabled = !modelLoaded;
-});
-
-function renderDoc() {
-  const pre = $("docContent");
-  pre.classList.remove("empty");
-  pre.textContent = docText;
-}
-
-// ---------------- Model loading ----------------
-const MODEL = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
-
-$("loadModelBtn").addEventListener("click", async () => {
-  if (modelLoaded || engine) return;
-  $("loadModelBtn").disabled = true;
-  $("progress").classList.add("show");
-  statusEl.textContent = "Loading model (first time: ~900MB download)...";
-  statusEl.className = "status";
-
-  try {
-    engine = await webllm.CreateMLCEngine(MODEL, {
-      initProgressCallback: (p) => {
-        statusEl.textContent = p.text;
-        if (p.progress != null) {
-          progressBar.style.width = (p.progress * 100) + "%";
-        }
-      }
-    });
-    modelLoaded = true;
-    statusEl.textContent = "Model ready ✓";
-    statusEl.className = "status ready";
-    $("progress").classList.remove("show");
-    $("askBtn").disabled = !docText;
-  } catch (err) {
-    console.error(err);
-    statusEl.textContent = "Model load failed: " + err.message;
-    statusEl.className = "status error";
-    $("loadModelBtn").disabled = false;
-  }
-});
-
-// ---------------- Asking ----------------
-$("askBtn").addEventListener("click", async () => {
-  const q = $("question").value.trim();
-  if (!q || !docText || !engine) return;
-
-  $("askBtn").disabled = true;
-  statusEl.textContent = "Thinking...";
-
-  // Truncate very large docs to fit context. ~3000 chars is safe-ish for 1B models.
-  const MAX_DOC = 6000;
-  const docForPrompt = docText.length > MAX_DOC
-    ? docText.slice(0, MAX_DOC) + "\n\n[...document truncated for model context...]"
-    : docText;
-
-  const sys = `You answer questions about a document the user provides. You MUST respond with valid JSON only, no other text, in this exact shape:
-{"answer": "your answer here", "citations": ["exact verbatim quote from the document", "another exact quote"]}
-Each citation MUST be a verbatim substring of the document — copy text exactly, including punctuation. Keep quotes short (5-25 words). Use 1-4 citations. If you cannot find supporting text, return an empty citations array.`;
-
-  const user = `DOCUMENT:\n${docForPrompt}\n\nQUESTION: ${q}\n\nRespond with JSON only.`;
-
-  try {
-    const reply = await engine.chat.completions.create({
-      messages: [
-        { role: "system", content: sys },
-        { role: "user", content: user }
-      ],
-      temperature: 0.3,
-      max_tokens: 600
-    });
-    const raw = reply.choices[0].message.content;
-    renderAnswer(q, raw);
-    statusEl.textContent = "Model ready ✓";
-  } catch (err) {
-    console.error(err);
-    renderAnswer(q, JSON.stringify({ answer: "Error: " + err.message, citations: [] }));
-    statusEl.textContent = "Error during inference";
-  } finally {
-    $("askBtn").disabled = false;
-  }
-});
-
-// ---------------- Rendering answers + citations ----------------
-function renderAnswer(question, rawJson) {
-  const id = ++citationCounter;
-  let parsed;
-  try {
-    // Strip markdown fences if model wraps JSON
-    const cleaned = rawJson.replace(/```json\s*|```\s*$/g, "").trim();
-    // Try to find first { ... } block
-    const m = cleaned.match(/\{[\s\S]*\}/);
-    parsed = JSON.parse(m ? m[0] : cleaned);
-  } catch (e) {
-    parsed = { answer: rawJson, citations: [] };
-  }
-
-  const item = document.createElement("div");
-  item.className = "qa-item";
-  item.dataset.qid = id;
-
-  const qDiv = document.createElement("div");
-  qDiv.className = "q";
-  qDiv.textContent = "Q: " + question;
-  item.appendChild(qDiv);
-
-  const aDiv = document.createElement("div");
-  aDiv.className = "a";
-  aDiv.textContent = parsed.answer || "(no answer)";
-  item.appendChild(aDiv);
-
-  if (Array.isArray(parsed.citations) && parsed.citations.length > 0) {
-    const cDiv = document.createElement("div");
-    cDiv.className = "citations";
-    cDiv.appendChild(document.createTextNode("Sources: "));
-    parsed.citations.forEach((quote, idx) => {
-      const cite = document.createElement("span");
-      cite.className = "cite";
-      const citeId = `cite-${id}-${idx}`;
-      cite.id = citeId;
-      cite.textContent = `[${idx + 1}]`;
-      cite.title = quote;
-
-      const found = highlightInDoc(quote, citeId);
-      if (!found) cite.classList.add("missing");
-
-      cite.addEventListener("click", () => {
-        if (!found) return;
-        // Clear previous active
-        document.querySelectorAll("mark.quote.active").forEach(m => m.classList.remove("active"));
-        const target = document.querySelector(`mark.quote[data-cite="${citeId}"]`);
-        if (target) {
-          target.classList.add("active");
-          target.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-      });
-      cDiv.appendChild(cite);
-    });
-    item.appendChild(cDiv);
-  }
-
-  // Raw JSON toggle
-  const toggle = document.createElement("span");
-  toggle.className = "raw-toggle";
-  toggle.textContent = "show raw";
-  toggle.addEventListener("click", () => {
-    item.classList.toggle("open");
-    toggle.textContent = item.classList.contains("open") ? "hide raw" : "show raw";
-  });
-  item.appendChild(toggle);
-  const raw = document.createElement("div");
-  raw.className = "raw";
-  raw.textContent = rawJson;
-  item.appendChild(raw);
-
-  $("answers").prepend(item);
-}
-
-// ---------------- Doc highlighting ----------------
-// Every time we add a citation, we re-render the doc with all highlights.
-// Highlights are tracked in this list so we can rebuild reliably.
-const highlights = []; // [{quote, citeId}]
-
-function highlightInDoc(quote, citeId) {
-  if (!quote || quote.length < 4) return false;
-  // Try exact match first
-  let idx = docText.indexOf(quote);
-  // Fuzzy fallback: collapse whitespace
-  if (idx === -1) {
-    const norm = s => s.replace(/\s+/g, " ").trim();
-    const haystack = norm(docText);
-    const needle = norm(quote);
-    const ni = haystack.indexOf(needle);
-    if (ni === -1) return false;
-    // Map back approximately by walking
-    idx = approximateMap(docText, ni);
-    if (idx === -1) return false;
-    // Use the approximate slice from original text
-    quote = docText.slice(idx, idx + quote.length);
-  }
-  highlights.push({ quote, citeId, start: idx });
-  rebuildDoc();
-  return true;
-}
-
-function approximateMap(original, normalizedIndex) {
-  // Walk original, count non-collapsed whitespace position
-  let count = 0;
-  let prevWs = false;
-  for (let i = 0; i < original.length; i++) {
-    const c = original[i];
-    const isWs = /\s/.test(c);
-    if (isWs) {
-      if (!prevWs) {
-        if (count === normalizedIndex) return i;
-        count++;
-      }
-      prevWs = true;
-    } else {
-      if (count === normalizedIndex) return i;
-      count++;
-      prevWs = false;
-    }
-  }
-  return -1;
-}
-
-function rebuildDoc() {
-  // Sort highlights by start position, build innerHTML with marks
-  const sorted = [...highlights].sort((a, b) => a.start - b.start);
-  // Filter overlaps: keep first, drop overlapping later
-  const kept = [];
-  let lastEnd = -1;
-  for (const h of sorted) {
-    if (h.start >= lastEnd) {
-      kept.push(h);
-      lastEnd = h.start + h.quote.length;
-    }
-  }
-  let html = "";
-  let cursor = 0;
-  for (const h of kept) {
-    html += escapeHtml(docText.slice(cursor, h.start));
-    html += `<mark class="quote" data-cite="${h.citeId}">${escapeHtml(docText.slice(h.start, h.start + h.quote.length))}</mark>`;
-    cursor = h.start + h.quote.length;
-  }
-  html += escapeHtml(docText.slice(cursor));
-  $("docContent").innerHTML = html;
-  // Rewire mark clicks (click highlight -> scroll to citation)
-  document.querySelectorAll("mark.quote").forEach(m => {
-    m.addEventListener("click", () => {
-      const cid = m.dataset.cite;
-      const target = document.getElementById(cid);
-      if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "center" });
-        target.style.transition = "transform 0.2s";
-        target.style.transform = "scale(1.3)";
-        setTimeout(() => target.style.transform = "", 300);
-      }
-    });
-  });
-}
-
-function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, c => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-  }[c]));
-}
-
-// ---------------- Misc ----------------
-$("clearBtn").addEventListener("click", () => {
-  $("answers").innerHTML = "";
-  highlights.length = 0;
-  if (docText) renderDoc();
-});
-
-// Keyboard: Cmd/Ctrl+Enter to ask
 $("question").addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
     $("askBtn").click();
