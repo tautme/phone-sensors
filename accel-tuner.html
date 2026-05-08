@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+<meta http-equiv="Permissions-Policy" content="accelerometer=*, gyroscope=*">
+<meta name="theme-color" content="#07080a">
+<title>guitar-tuner-accel</title>
+<style>
+  :root {
+    --bg: #07080a;
+    --ink: #e6e9ef;
+    --dim: #6b7280;
+    --line: #1c2026;
+    --hot: #ffba49;
+    --ok: #6fe079;
+    --bad: #ff6b6b;
+    --x: #ff7a78;
+    --y: #8fde7a;
+    --z: #5fb8ff;
+    --a: #ffba49;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 13px/1.3 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+    -webkit-user-select: none;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+  }
+  .top {
+    flex: 0 0 auto;
+    padding: max(env(safe-area-inset-top), 10px) 14px 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .row1 { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .note {
+    font: 600 30px/1 "Iowan Old Style", "Charter", Georgia, serif;
+    letter-spacing: -0.02em;
+  }
+  .note .sub { font-size: 12px; color: var(--dim); margin-left: 6px; font-family: ui-monospace, monospace; font-weight: normal; }
+  .nums { text-align: right; line-height: 1.25; }
+  .nums .freq { color: var(--ink); font-size: 13px; font-weight: 600; }
+  .nums .cents { font-size: 12px; color: var(--dim); }
+  .nums .cents.ok { color: var(--ok); }
+  .nums .cents.off { color: var(--hot); }
+  .nums .cents.far { color: var(--bad); }
+  .meter {
+    height: 20px;
+    margin-top: 6px;
+    position: relative;
+    background:
+      linear-gradient(90deg,
+        rgba(255,107,107,0.28) 0%,
+        rgba(255,186,73,0.18) 30%,
+        rgba(111,224,121,0.20) 50%,
+        rgba(255,186,73,0.18) 70%,
+        rgba(255,107,107,0.28) 100%);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .meter .center { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.4); }
+  .meter .needle {
+    position: absolute; top: 2px; bottom: 2px;
+    left: 50%; width: 3px; margin-left: -1.5px;
+    background: var(--hot);
+    border-radius: 2px;
+    transition: left 100ms linear, background 120ms;
+    box-shadow: 0 0 8px currentColor;
+  }
+  .meter .needle.ok  { background: var(--ok); }
+  .meter .needle.far { background: var(--bad); }
+
+  .traces {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--line);
+    min-height: 0;
+  }
+  .trace-row {
+    flex: 1;
+    display: flex;
+    align-items: stretch;
+    background: #000;
+    min-height: 0;
+    position: relative;
+  }
+  .trace-row .label {
+    flex: 0 0 32px;
+    display: grid; place-items: center;
+    font: 600 11px/1 ui-monospace, monospace;
+    border-right: 1px solid #111316;
+  }
+  .trace-row[data-axis=x] .label { color: var(--x); }
+  .trace-row[data-axis=y] .label { color: var(--y); }
+  .trace-row[data-axis=z] .label { color: var(--z); }
+  .trace-row[data-axis=a] .label { color: var(--a); }
+  .trace-row canvas { flex: 1 1 auto; display: block; width: 100%; height: 100%; }
+  .trace-row.dom::after {
+    content: '◀ pitch';
+    position: absolute; top: 3px; right: 5px;
+    font: 600 9px/1 ui-monospace, monospace;
+    color: rgba(255,255,255,0.7);
+    background: rgba(0,0,0,0.5);
+    padding: 2px 4px;
+    border-radius: 2px;
+    pointer-events: none;
+  }
+
+  .diag {
+    flex: 0 0 auto;
+    font: 10px/1 ui-monospace, monospace;
+    color: var(--dim);
+    text-align: center;
+    padding: 6px 8px;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    background: #0a0c10;
+  }
+  .diag .ok { color: var(--ok); }
+  .diag .warn { color: var(--hot); }
+  .diag .bad { color: var(--bad); }
+
+  .bot {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 4px;
+    padding: 8px 8px max(env(safe-area-inset-bottom), 8px);
+    background: var(--bg);
+  }
+  .bot button {
+    flex: 1;
+    background: transparent;
+    color: var(--dim);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 10px 0;
+    font: 600 12px/1 ui-monospace, monospace;
+    cursor: pointer;
+    transition: background 100ms, color 100ms, border-color 100ms;
+  }
+  .bot button.active   { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .bot button.detected:not(.active) { border-color: var(--hot); color: var(--hot); }
+
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(7,8,10,0.96);
+    display: grid; place-items: center;
+    z-index: 10;
+    padding: 24px;
+  }
+  .overlay-inner { text-align: center; max-width: 340px; }
+  .overlay h1 {
+    font: 600 22px/1.1 "Iowan Old Style", Charter, Georgia, serif;
+    margin: 0 0 8px;
+  }
+  .overlay p { color: var(--dim); margin: 0 0 18px; font-size: 12px; line-height: 1.45; }
+  .overlay button {
+    background: var(--ink);
+    color: var(--bg);
+    border: none;
+    padding: 14px 28px;
+    font: 600 14px/1 ui-monospace, monospace;
+    border-radius: 4px;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+  }
+  .overlay .hint { color: var(--dim); margin-top: 12px; font-size: 11px; }
+  .overlay.hidden { display: none; }
+</style>
+</head>
+<body>
+  <div class="top">
+    <div class="row1">
+      <div class="note"><span id="noteName">—</span><span class="sub" id="targetFreq"></span></div>
+      <div class="nums">
+        <div class="freq" id="liveFreq">— Hz obs</div>
+        <div class="cents" id="cents">—</div>
+      </div>
+    </div>
+    <div class="meter">
+      <div class="center"></div>
+      <div class="needle" id="needle"></div>
+    </div>
+  </div>
+
+  <div class="traces" id="traces">
+    <div class="trace-row" data-axis="x"><span class="label">X</span><canvas></canvas></div>
+    <div class="trace-row" data-axis="y"><span class="label">Y</span><canvas></canvas></div>
+    <div class="trace-row" data-axis="z"><span class="label">Z</span><canvas></canvas></div>
+    <div class="trace-row" data-axis="a"><span class="label">|a|</span><canvas></canvas></div>
+  </div>
+
+  <div class="diag" id="diag">awaiting sensor…</div>
+
+  <div class="bot" id="strings">
+    <button data-target="auto" class="active">AUTO</button>
+    <button data-target="0">E2</button>
+    <button data-target="1">A2</button>
+    <button data-target="2">D3</button>
+    <button data-target="3">G3</button>
+    <button data-target="4">B3</button>
+    <button data-target="5">E4</button>
+  </div>
+
+  <div class="overlay" id="overlay">
+    <div class="overlay-inner">
+      <h1>Accel Tuner</h1>
+      <p>Press the phone firmly against the guitar body and pluck a string. Each axis trace shows raw vibration; <b>|a|</b> is the combined magnitude. Pitch is detected from the strongest axis (alias-corrected to the actual string frequency).</p>
+      <button id="startBtn">tap to start</button>
+      <div class="hint">motion permission required · works best on Android with high-rate IMU</div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const STRINGS = [
+    { name: 'E2', freq: 82.41 },
+    { name: 'A2', freq: 110.00 },
+    { name: 'D3', freq: 146.83 },
+    { name: 'G3', freq: 196.00 },
+    { name: 'B3', freq: 246.94 },
+    { name: 'E4', freq: 329.63 },
+  ];
+  const BUF_SIZE = 1024;
+
+  // ── ring buffers ─────────────────────────
+  const buf = {
+    x: new Float32Array(BUF_SIZE),
+    y: new Float32Array(BUF_SIZE),
+    z: new Float32Array(BUF_SIZE),
+    a: new Float32Array(BUF_SIZE),
+  };
+  const tBuf = new Float64Array(BUF_SIZE);
+  let writePos = 0, totalSamples = 0;
+
+  // gravity removal (used for raw Accelerometer / accelerationIncludingGravity)
+  let dcX = 0, dcY = 0, dcZ = 0, dcInit = false;
+  const dcAlpha = 0.005;
+
+  // diagnostics
+  let sensorMethod = 'none';
+  let sampleRate = 0;
+  let dominantAxis = 'z';
+
+  // selection
+  let selectedStringIdx = null;     // null = auto
+  let lastObsFreq = 0;
+  let lastStringIdx = null;
+
+  function pushSample(rawX, rawY, rawZ, t, removeGravity) {
+    let x = rawX, y = rawY, z = rawZ;
+    if (removeGravity) {
+      if (!dcInit) { dcX = x; dcY = y; dcZ = z; dcInit = true; }
+      dcX += (x - dcX) * dcAlpha;
+      dcY += (y - dcY) * dcAlpha;
+      dcZ += (z - dcZ) * dcAlpha;
+      x -= dcX; y -= dcY; z -= dcZ;
+    }
+    const a = Math.hypot(x, y, z);
+    buf.x[writePos] = x;
+    buf.y[writePos] = y;
+    buf.z[writePos] = z;
+    buf.a[writePos] = a;
+    tBuf[writePos] = t;
+    writePos = (writePos + 1) % BUF_SIZE;
+    totalSamples++;
+  }
+
+  function getOrdered(arr, count) {
+    count = Math.min(count, BUF_SIZE);
+    const out = new Float32Array(count);
+    const start = (writePos - count + BUF_SIZE) % BUF_SIZE;
+    for (let i = 0; i < count; i++) out[i] = arr[(start + i) % BUF_SIZE];
+    return out;
+  }
+
+  // ── sensor setup ─────────────────────────
+  async function startSensor() {
+    if (typeof DeviceMotionEvent !== 'undefined' &&
+        typeof DeviceMotionEvent.requestPermission === 'function') {
+      const state = await DeviceMotionEvent.requestPermission();
+      if (state !== 'granted') throw new Error('motion permission denied');
+    }
+
+    if ('LinearAccelerationSensor' in window) {
+      try {
+        const s = new LinearAccelerationSensor({ frequency: 1000 });
+        s.addEventListener('reading', () => {
+          pushSample(s.x, s.y, s.z, performance.now(), false);
+        });
+        s.addEventListener('error', e => console.warn('LAS error', e.error || e));
+        s.start();
+        sensorMethod = 'LinearAccelerationSensor';
+        return;
+      } catch (e) { console.warn('LAS construct failed', e); }
+    }
+    if ('Accelerometer' in window) {
+      try {
+        const s = new Accelerometer({ frequency: 1000 });
+        s.addEventListener('reading', () => {
+          pushSample(s.x, s.y, s.z, performance.now(), true);
+        });
+        s.addEventListener('error', e => console.warn('Accel error', e.error || e));
+        s.start();
+        sensorMethod = 'Accelerometer (raw)';
+        return;
+      } catch (e) { console.warn('Accel construct failed', e); }
+    }
+    window.addEventListener('devicemotion', onDeviceMotion);
+    sensorMethod = 'devicemotion';
+  }
+  function onDeviceMotion(e) {
+    const t = performance.now();
+    const a = e.acceleration;
+    if (a && a.x !== null && a.x !== undefined) {
+      pushSample(a.x, a.y, a.z, t, false);
+    } else {
+      const ag = e.accelerationIncludingGravity;
+      if (ag && ag.x !== null) pushSample(ag.x, ag.y, ag.z, t, true);
+    }
+  }
+
+  // ── measure effective sample rate (median dt) ──
+  function measureRate() {
+    const n = Math.min(totalSamples, BUF_SIZE);
+    if (n < 16) return 0;
+    const dts = [];
+    for (let i = 1; i < n; i++) {
+      const a = tBuf[(writePos - i + BUF_SIZE) % BUF_SIZE];
+      const b = tBuf[(writePos - i - 1 + BUF_SIZE) % BUF_SIZE];
+      const dt = a - b;
+      if (dt > 0 && dt < 100) dts.push(dt);
+    }
+    if (dts.length < 8) return 0;
+    dts.sort((a, b) => a - b);
+    const median = dts[dts.length >> 1];
+    return 1000 / median;
+  }
+
+  // ── pitch detect (zero-mean autocorrelation + parabolic interp) ──
+  function detectPitch(rawBuf, fs, minHz, maxHz) {
+    const SIZE = rawBuf.length;
+    let mean = 0;
+    for (let i = 0; i < SIZE; i++) mean += rawBuf[i];
+    mean /= SIZE;
+    const x = new Float32Array(SIZE);
+    let rms = 0;
+    for (let i = 0; i < SIZE; i++) {
+      const v = rawBuf[i] - mean;
+      x[i] = v;
+      rms += v * v;
+    }
+    rms = Math.sqrt(rms / SIZE);
+    if (rms < 0.005) return -1;     // too quiet
+
+    const minLag = Math.max(2, Math.floor(fs / maxHz));
+    const maxLag = Math.min(SIZE - 2, Math.ceil(fs / Math.max(0.5, minHz)));
+    if (maxLag <= minLag + 2) return -1;
+
+    const c = new Float32Array(maxLag + 2);
+    for (let i = minLag - 1; i <= maxLag + 1; i++) {
+      let s = 0;
+      const end = SIZE - i;
+      for (let j = 0; j < end; j++) s += x[j] * x[j + i];
+      c[i] = s;
+    }
+    let mv = -Infinity, mp = -1;
+    for (let i = minLag; i <= maxLag; i++) if (c[i] > mv) { mv = c[i]; mp = i; }
+    if (mp <= 0) return -1;
+    const x1 = c[mp - 1], x2 = c[mp], x3 = c[mp + 1];
+    const a = (x1 + x3 - 2 * x2) / 2;
+    const b = (x3 - x1) / 2;
+    const T = a ? mp - b / (2 * a) : mp;
+    return fs / T;
+  }
+
+  // ── alias math ───────────────────────────
+  // Returns { observed, sign } for true frequency T at sample rate fs.
+  // observed = what autocorrelation will see (in [0, fs/2])
+  // sign     = direction of observed change w.r.t. true change
+  function aliasInfo(T, fs) {
+    if (fs <= 0) return { observed: T, sign: 1 };
+    const n = Math.round(T / fs);
+    const aliased = T - n * fs;
+    return { observed: Math.abs(aliased), sign: aliased >= 0 ? 1 : -1 };
+  }
+  function findClosestString(fObs, fs) {
+    let best = -1, bestDist = Infinity;
+    for (let i = 0; i < STRINGS.length; i++) {
+      const info = aliasInfo(STRINGS[i].freq, fs);
+      const d = Math.abs(fObs - info.observed);
+      if (d < bestDist) { bestDist = d; best = i; }
+    }
+    return best;
+  }
+  function centsForString(fObs, idx, fs) {
+    const T = STRINGS[idx].freq;
+    const info = aliasInfo(T, fs);
+    const deltaObs = fObs - info.observed;
+    const deltaTrue = deltaObs * info.sign;
+    if (T + deltaTrue <= 0) return 0;
+    return 1200 * Math.log2((T + deltaTrue) / T);
+  }
+
+  // ── dominant axis (highest variance over recent buffer) ──
+  function pickDominantAxis() {
+    let mx=0, my=0, mz=0;
+    for (let i = 0; i < BUF_SIZE; i++) { mx+=buf.x[i]; my+=buf.y[i]; mz+=buf.z[i]; }
+    mx/=BUF_SIZE; my/=BUF_SIZE; mz/=BUF_SIZE;
+    let vx=0, vy=0, vz=0;
+    for (let i = 0; i < BUF_SIZE; i++) {
+      const dx = buf.x[i]-mx, dy = buf.y[i]-my, dz = buf.z[i]-mz;
+      vx += dx*dx; vy += dy*dy; vz += dz*dz;
+    }
+    if (vx >= vy && vx >= vz) return 'x';
+    if (vy >= vz) return 'y';
+    return 'z';
+  }
+
+  // ── canvas drawing ──────────────────────
+  const canvases = {};
+  document.querySelectorAll('.trace-row').forEach(row => {
+    canvases[row.dataset.axis] = row.querySelector('canvas');
+  });
+
+  function resizeCanvases() {
+    for (const k in canvases) {
+      const c = canvases[k];
+      const r = c.getBoundingClientRect();
+      c.width  = Math.max(1, r.width  | 0);
+      c.height = Math.max(1, r.height | 0);
+    }
+  }
+
+  const COLORS = { x: '#ff7a78', y: '#8fde7a', z: '#5fb8ff', a: '#ffba49' };
+
+  function drawTraces() {
+    for (const k of ['x','y','z','a']) {
+      const c = canvases[k];
+      const ctx = c.getContext('2d');
+      const w = c.width, h = c.height;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, w, h);
+
+      // baseline
+      ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      const baseY = (k === 'a') ? h - 1 : h / 2;
+      ctx.moveTo(0, baseY); ctx.lineTo(w, baseY);
+      ctx.stroke();
+
+      const count = Math.min(w, BUF_SIZE);
+      const data = getOrdered(buf[k], count);
+
+      // autoscale by recent abs max
+      let max = 0.05;
+      for (let i = 0; i < count; i++) {
+        const v = Math.abs(data[i]);
+        if (v > max) max = v;
+      }
+
+      ctx.strokeStyle = COLORS[k];
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      if (k === 'a') {
+        for (let i = 0; i < count; i++) {
+          const x = i;
+          const y = h - 2 - (data[i] / max) * (h - 4);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+      } else {
+        for (let i = 0; i < count; i++) {
+          const x = i;
+          const y = h/2 - (data[i] / max) * (h/2 - 2);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+    }
+
+    // mark dominant axis
+    document.querySelectorAll('.trace-row').forEach(r => {
+      r.classList.toggle('dom', r.dataset.axis === dominantAxis);
+    });
+  }
+
+  // ── UI updates ──────────────────────────
+  function clearReadout() {
+    document.getElementById('liveFreq').textContent = '— Hz obs';
+    const c = document.getElementById('cents'); c.textContent = '—'; c.className = 'cents';
+    const n = document.getElementById('needle'); n.style.left = '50%'; n.className = 'needle';
+    if (selectedStringIdx === null) {
+      document.querySelectorAll('#strings button').forEach(b => b.classList.remove('detected'));
+      document.getElementById('noteName').textContent = '—';
+      document.getElementById('targetFreq').textContent = '';
+    }
+  }
+
+  function updatePitch() {
+    if (sampleRate < 30) return;
+    dominantAxis = pickDominantAxis();
+    const data = getOrdered(buf[dominantAxis], BUF_SIZE);
+    const nyq = sampleRate / 2;
+    const f = detectPitch(data, sampleRate, 2, Math.min(nyq * 0.95, 100));
+    if (f > 0) {
+      lastObsFreq = lastObsFreq === 0 ? f : (lastObsFreq * 0.4 + f * 0.6);
+
+      let idx = selectedStringIdx;
+      if (idx === null) idx = findClosestString(lastObsFreq, sampleRate);
+      lastStringIdx = idx;
+
+      const target = STRINGS[idx];
+      const cents = centsForString(lastObsFreq, idx, sampleRate);
+
+      document.getElementById('noteName').textContent = target.name;
+      document.getElementById('targetFreq').textContent = target.freq.toFixed(2) + ' Hz';
+      document.getElementById('liveFreq').textContent = lastObsFreq.toFixed(2) + ' Hz obs';
+
+      const cEl = document.getElementById('cents');
+      const sign = cents >= 0 ? '+' : '';
+      cEl.textContent = `${sign}${cents.toFixed(1)}¢`;
+      const absC = Math.abs(cents);
+      const cls = absC < 5 ? 'ok' : absC < 25 ? 'off' : 'far';
+      cEl.className = 'cents ' + cls;
+
+      const needle = document.getElementById('needle');
+      needle.style.left = `${50 + Math.max(-50, Math.min(50, cents))}%`;
+      needle.className = 'needle ' + cls;
+
+      if (selectedStringIdx === null) {
+        document.querySelectorAll('#strings button').forEach(b => b.classList.remove('detected'));
+        const det = document.querySelector(`#strings button[data-target="${idx}"]`);
+        if (det) det.classList.add('detected');
+      }
+    } else {
+      lastObsFreq *= 0.85;
+      if (lastObsFreq < 0.5) { lastObsFreq = 0; clearReadout(); }
+    }
+  }
+
+  function updateDiag() {
+    sampleRate = measureRate();
+    const nyq = sampleRate / 2;
+    const rateClass = sampleRate >= 200 ? 'ok' : sampleRate >= 80 ? 'warn' : 'bad';
+    const el = document.getElementById('diag');
+    el.innerHTML =
+      `<span class="${rateClass}">${sampleRate.toFixed(0)} Hz</span> · ` +
+      `Nyq ${nyq.toFixed(0)} Hz · ${sensorMethod} · pitch ← ${dominantAxis.toUpperCase()}`;
+  }
+
+  // ── main loop ───────────────────────────
+  let lastPitchT = 0, lastDiagT = 0;
+  function loop(t) {
+    drawTraces();
+    if (t - lastPitchT > 100) { lastPitchT = t; updatePitch(); }
+    if (t - lastDiagT  > 250) { lastDiagT  = t; updateDiag(); }
+    requestAnimationFrame(loop);
+  }
+
+  // ── string selection ────────────────────
+  document.getElementById('strings').addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    document.querySelectorAll('#strings button').forEach(b => {
+      b.classList.remove('active');
+      b.classList.remove('detected');
+    });
+    btn.classList.add('active');
+    const t = btn.dataset.target;
+    selectedStringIdx = (t === 'auto') ? null : parseInt(t, 10);
+    if (selectedStringIdx !== null) {
+      const s = STRINGS[selectedStringIdx];
+      document.getElementById('noteName').textContent = s.name;
+      document.getElementById('targetFreq').textContent = s.freq.toFixed(2) + ' Hz';
+    }
+  });
+
+  // ── start ───────────────────────────────
+  document.getElementById('startBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('startBtn');
+    btn.textContent = 'starting…';
+    try {
+      await startSensor();
+      resizeCanvases();
+      window.addEventListener('resize', resizeCanvases);
+      window.addEventListener('orientationchange', () => setTimeout(resizeCanvases, 250));
+      document.getElementById('overlay').classList.add('hidden');
+      requestAnimationFrame(loop);
+    } catch (e) {
+      btn.textContent = 'failed';
+      const hint = document.querySelector('.overlay .hint');
+      if (hint) hint.textContent = (e && e.message) ? e.message : 'sensor not available';
+    }
+  });
+})();
+</script>
+</body>
+</html>
