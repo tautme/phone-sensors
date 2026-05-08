@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta http-equiv="Permissions-Policy" content="camera=*">
+<title>ocr-vision · book spine OCR comparison</title>
+<style>
+  :root {
+    --bg: #0d0e10;
+    --panel: #15171b;
+    --panel-2: #1c1f25;
+    --line: #262a32;
+    --fg: #e7e9ec;
+    --dim: #8b909a;
+    --hot: #ffb454;
+    --cool: #5fb8ff;
+    --ok: #8fde7a;
+    --bad: #ff7a78;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Charter", "Georgia", serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body {
+    font: 14px/1.5 var(--mono);
+    padding: 18px max(14px, env(safe-area-inset-left)) max(18px, env(safe-area-inset-bottom));
+    max-width: 980px;
+    margin: 0 auto;
+  }
+  header { border-bottom: 1px dashed var(--line); padding-bottom: 12px; margin-bottom: 16px; }
+  h1 {
+    font: 600 22px/1.1 var(--serif);
+    letter-spacing: -0.01em;
+    margin: 0 0 4px;
+  }
+  h1 .tag {
+    font: 500 11px/1 var(--mono);
+    color: var(--hot);
+    border: 1px solid var(--hot);
+    padding: 3px 6px;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-left: 6px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .lede { color: var(--dim); margin: 0; font-size: 13px; }
+
+  .controls { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0 12px; }
+  button, label.btn {
+    background: var(--panel);
+    color: var(--fg);
+    border: 1px solid var(--line);
+    padding: 8px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font: 500 13px/1 var(--mono);
+    letter-spacing: 0.02em;
+    transition: border-color 120ms, background 120ms;
+  }
+  button:hover, label.btn:hover { border-color: var(--cool); }
+  button.primary { background: var(--cool); color: #0a0c11; border-color: var(--cool); }
+  button.primary:hover { filter: brightness(1.1); }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  input[type=file] { display: none; }
+
+  .stage {
+    position: relative;
+    background: #000;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+    aspect-ratio: 4/3;
+    width: 100%;
+    max-width: 720px;
+  }
+  .stage video, .stage > img.loaded {
+    width: 100%; height: 100%; object-fit: contain; display: block; background: #000;
+  }
+  .stage canvas.overlay {
+    position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;
+  }
+  .stage .placeholder {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.2em;
+  }
+
+  .status {
+    margin: 12px 0;
+    color: var(--dim);
+    font-size: 12px;
+    min-height: 1.4em;
+    border-left: 2px solid var(--line);
+    padding: 2px 10px;
+  }
+  .status.work { border-left-color: var(--hot); color: var(--hot); }
+  .status.ok { border-left-color: var(--ok); color: var(--ok); }
+  .status.err { border-left-color: var(--bad); color: var(--bad); }
+
+  .crops {
+    display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0;
+  }
+  .crop {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 8px;
+    flex: 0 0 auto;
+  }
+  .crop .label {
+    font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.15em;
+    margin-bottom: 6px;
+  }
+  .crop img { display: block; max-width: 200px; max-height: 220px; background: #000; border-radius: 2px; }
+  .crop .meta { font-size: 11px; color: var(--dim); margin-top: 6px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .engine {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 14px;
+    position: relative;
+  }
+  .engine::before {
+    content: '';
+    position: absolute; top: -1px; left: 14px; width: 36px; height: 2px;
+    background: var(--cool);
+  }
+  .engine[data-engine="trocr"]::before { background: var(--hot); }
+  .engine .head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .engine .name { font: 600 14px/1.2 var(--serif); }
+  .engine .sub { font-size: 11px; color: var(--dim); }
+  .engine .state { font-size: 11px; color: var(--dim); margin-bottom: 8px; min-height: 1.2em; }
+  .engine .state b { color: var(--fg); font-weight: 600; }
+  .engine .state.work b { color: var(--hot); }
+  .engine .state.done b { color: var(--ok); }
+  .engine .state.err b { color: var(--bad); }
+  .engine pre {
+    background: #0a0b0e;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 10px;
+    margin: 0 0 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    min-height: 4em;
+    font: 13px/1.45 var(--mono);
+    color: var(--fg);
+  }
+  .engine pre.empty { color: var(--dim); }
+  .stats { font-size: 11px; color: var(--dim); display: flex; gap: 14px; flex-wrap: wrap; }
+  .stats span b { color: var(--fg); font-weight: 600; }
+
+  details { margin-top: 18px; border-top: 1px dashed var(--line); padding-top: 14px; color: var(--dim); font-size: 12px; }
+  details summary { cursor: pointer; color: var(--fg); }
+  details p { margin: 8px 0; }
+  details code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+
+  footer { color: var(--dim); font-size: 11px; margin-top: 24px; padding-top: 12px; border-top: 1px dashed var(--line); }
+  footer a { color: var(--cool); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ocr&#8209;vision <span class="tag">poc</span></h1>
+  <p class="lede">Detect a book in frame &rarr; crop to its bounding box &rarr; run multiple OCR engines on the spine for side-by-side comparison.</p>
+</header>
+
+<div class="controls">
+  <button id="startBtn" class="primary">Start camera</button>
+  <label class="btn" for="fileInput">Upload image</label>
+  <input type="file" id="fileInput" accept="image/*">
+  <button id="captureBtn" disabled>Capture &amp; OCR</button>
+</div>
+
+<div class="stage" id="stage">
+  <div class="placeholder" id="placeholder">camera off</div>
+  <video id="video" playsinline muted autoplay style="display:none"></video>
+  <img id="uploaded" alt="" style="display:none">
+  <canvas class="overlay" id="overlay"></canvas>
+</div>
+
+<div class="status" id="status">Ready. Start camera or upload an image with a visible book spine.</div>
+
+<div class="crops" id="crops" hidden>
+  <div class="crop">
+    <div class="label">Detected book</div>
+    <img id="bookCrop" alt="">
+    <div class="meta" id="bookMeta"></div>
+  </div>
+  <div class="crop">
+    <div class="label">OCR input</div>
+    <img id="ocrCrop" alt="">
+    <div class="meta" id="ocrMeta"></div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="engine" data-engine="tesseract">
+    <div class="head">
+      <span class="name">Tesseract.js</span>
+      <span class="sub">v5 &middot; ~3MB lib + ~10MB lang</span>
+    </div>
+    <div class="state" id="tesseractState">Status: <b>idle</b></div>
+    <pre id="tesseractText" class="empty">&mdash;</pre>
+    <div class="stats" id="tesseractStats"></div>
+  </div>
+  <div class="engine" data-engine="trocr">
+    <div class="head">
+      <span class="name">TrOCR (transformers.js)</span>
+      <span class="sub">trocr-small-printed &middot; ~250MB</span>
+    </div>
+    <div class="state" id="trocrState">Status: <b>idle</b></div>
+    <pre id="trocrText" class="empty">&mdash;</pre>
+    <div class="stats" id="trocrStats"></div>
+  </div>
+</div>
+
+<details>
+  <summary>Notes &amp; caveats</summary>
+  <p><b>Detection:</b> uses TF.js COCO-SSD (lite_mobilenet_v2). The COCO <code>book</code> class is trained mostly on books seen face-on, but generally fires on spine-out books too. If detection misses, the full frame is used as fallback.</p>
+  <p><b>Rotation:</b> if the cropped region is taller than wide (typical for spine-out books with vertical text), it's auto-rotated 90&deg; clockwise before OCR. If results look reversed, try re-capturing with the book flipped, or re-orient the phone.</p>
+  <p><b>Tesseract</b> is fast, runs well offline after a one-time language data download, and produces per-word confidence. It can struggle with stylized type and tight letter spacing.</p>
+  <p><b>TrOCR</b> is a transformer model trained for printed text lines &mdash; usually better on stylized typography but slower and ~25&times; the download. The small variant is single-line; multi-line spines may produce just the dominant line.</p>
+  <p><b>Both run client-side</b>; nothing leaves the device. First run downloads model weights (browser cache makes subsequent loads fast).</p>
+</details>
+
+<footer>
+  Part of the <a href="https://tautme.github.io/phone-sensors/">phone-sensors</a> collection. HTTPS required for camera access. MIT.
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
+
+<script type="module">
+const $ = id => document.getElementById(id);
+
+const video = $('video');
+const uploaded = $('uploaded');
+const placeholder = $('placeholder');
+const overlay = $('overlay');
+const stage = $('stage');
+
+let stream = null;
+let detector = null;
+let frameSource = null; // HTMLVideoElement or HTMLImageElement currently displayed
+
+function setStatus(msg, kind = '') {
+  const el = $('status');
+  el.textContent = msg;
+  el.className = 'status' + (kind ? ' ' + kind : '');
+}
+
+function setEngineState(id, label, kind = '') {
+  const el = $(id + 'State');
+  el.innerHTML = 'Status: <b>' + label + '</b>';
+  el.className = 'state' + (kind ? ' ' + kind : '');
+}
+
+function setEngineResult(id, text, stats) {
+  const pre = $(id + 'Text');
+  if (text && text.trim()) {
+    pre.textContent = text;
+    pre.classList.remove('empty');
+  } else {
+    pre.textContent = '(no text returned)';
+    pre.classList.add('empty');
+  }
+  $(id + 'Stats').innerHTML = stats.map(([k, v]) => `<span>${k}: <b>${v}</b></span>`).join('');
+}
+
+// ── input sources ────────────────────────────────────────────────
+async function startCamera() {
+  uploaded.style.display = 'none';
+  uploaded.classList.remove('loaded');
+  placeholder.style.display = 'none';
+  video.style.display = '';
+  try {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 960 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    frameSource = video;
+    $('captureBtn').disabled = false;
+    setStatus('Camera live. Frame the book spine and tap Capture & OCR.');
+  } catch (e) {
+    placeholder.style.display = '';
+    placeholder.textContent = 'camera blocked';
+    setStatus('Camera failed: ' + e.message + ' (HTTPS required, and you must grant permission.)', 'err');
+  }
+}
+
+$('startBtn').addEventListener('click', startCamera);
+
+$('fileInput').addEventListener('change', e => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.srcObject = null;
+  video.style.display = 'none';
+  placeholder.style.display = 'none';
+  const url = URL.createObjectURL(file);
+  uploaded.onload = () => {
+    uploaded.classList.add('loaded');
+    uploaded.style.display = '';
+    frameSource = uploaded;
+    $('captureBtn').disabled = false;
+    setStatus('Image loaded. Tap Capture & OCR.');
+  };
+  uploaded.src = url;
+});
+
+// ── pipeline helpers ─────────────────────────────────────────────
+function captureFrame(source) {
+  const c = document.createElement('canvas');
+  const w = source.videoWidth || source.naturalWidth;
+  const h = source.videoHeight || source.naturalHeight;
+  if (!w || !h) throw new Error('source has no dimensions yet');
+  c.width = w; c.height = h;
+  c.getContext('2d').drawImage(source, 0, 0, w, h);
+  return c;
+}
+
+async function ensureDetector() {
+  if (detector) return;
+  setStatus('Loading object detector (COCO-SSD)…', 'work');
+  detector = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+}
+
+function drawDetection(bbox, score) {
+  const sw = frameSource.videoWidth || frameSource.naturalWidth;
+  const sh = frameSource.videoHeight || frameSource.naturalHeight;
+  const rect = stage.getBoundingClientRect();
+  overlay.width = rect.width;
+  overlay.height = rect.height;
+  const ratio = Math.min(rect.width / sw, rect.height / sh);
+  const dw = sw * ratio, dh = sh * ratio;
+  const ox = (rect.width - dw) / 2, oy = (rect.height - dh) / 2;
+  const [x, y, w, h] = bbox;
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#5fb8ff';
+  ctx.strokeRect(ox + x * ratio, oy + y * ratio, w * ratio, h * ratio);
+  const lbl = `book ${(score * 100).toFixed(0)}%`;
+  ctx.font = 'bold 12px ui-monospace, Menlo, monospace';
+  const pad = 4, tw = ctx.measureText(lbl).width + pad * 2;
+  ctx.fillStyle = '#5fb8ff';
+  ctx.fillRect(ox + x * ratio, oy + y * ratio - 18, tw, 18);
+  ctx.fillStyle = '#0a0c11';
+  ctx.fillText(lbl, ox + x * ratio + pad, oy + y * ratio - 5);
+}
+
+function clearOverlay() {
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+}
+
+function cropFrom(canvas, bbox, pad = 6) {
+  const [x, y, w, h] = bbox;
+  const x0 = Math.max(0, Math.floor(x - pad));
+  const y0 = Math.max(0, Math.floor(y - pad));
+  const x1 = Math.min(canvas.width, Math.ceil(x + w + pad));
+  const y1 = Math.min(canvas.height, Math.ceil(y + h + pad));
+  const cw = x1 - x0, ch = y1 - y0;
+  const out = document.createElement('canvas');
+  out.width = cw; out.height = ch;
+  out.getContext('2d').drawImage(canvas, x0, y0, cw, ch, 0, 0, cw, ch);
+  return out;
+}
+
+function rotateIfPortrait(canvas) {
+  if (canvas.height <= canvas.width * 1.2) return { canvas, rotated: false };
+  const out = document.createElement('canvas');
+  out.width = canvas.height;
+  out.height = canvas.width;
+  const ctx = out.getContext('2d');
+  ctx.translate(out.width, 0);
+  ctx.rotate(Math.PI / 2);
+  ctx.drawImage(canvas, 0, 0);
+  return { canvas: out, rotated: true };
+}
+
+// ── engines ──────────────────────────────────────────────────────
+let tessWorker = null;
+let tessLoadMs = null;
+async function tesseractInit() {
+  if (tessWorker) return;
+  setEngineState('tesseract', 'loading…', 'work');
+  const t0 = performance.now();
+  tessWorker = await Tesseract.createWorker('eng');
+  tessLoadMs = performance.now() - t0;
+  setEngineState('tesseract', `ready (load ${tessLoadMs.toFixed(0)}ms)`);
+}
+async function tesseractRun(canvas) {
+  await tesseractInit();
+  setEngineState('tesseract', 'recognizing…', 'work');
+  const t0 = performance.now();
+  const { data } = await tessWorker.recognize(canvas);
+  const recMs = performance.now() - t0;
+  setEngineState('tesseract', 'done', 'done');
+  setEngineResult('tesseract', data.text.trim(), [
+    ['load', (tessLoadMs ?? 0).toFixed(0) + 'ms'],
+    ['recognize', recMs.toFixed(0) + 'ms'],
+    ['confidence', (data.confidence ?? 0).toFixed(1) + '%'],
+    ['words', String(data.words?.length ?? 0)],
+  ]);
+}
+
+let trocrPipe = null;
+let trocrLoadMs = null;
+async function trocrInit() {
+  if (trocrPipe) return;
+  setEngineState('trocr', 'importing transformers.js…', 'work');
+  const tf = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2');
+  setEngineState('trocr', 'loading model (first run downloads ~250MB)…', 'work');
+  const t0 = performance.now();
+  trocrPipe = await tf.pipeline('image-to-text', 'Xenova/trocr-small-printed');
+  trocrLoadMs = performance.now() - t0;
+  setEngineState('trocr', `ready (load ${trocrLoadMs.toFixed(0)}ms)`);
+}
+async function trocrRun(canvas) {
+  await trocrInit();
+  setEngineState('trocr', 'recognizing…', 'work');
+  const dataUrl = canvas.toDataURL('image/png');
+  const t0 = performance.now();
+  const out = await trocrPipe(dataUrl);
+  const recMs = performance.now() - t0;
+  setEngineState('trocr', 'done', 'done');
+  const text = (out?.[0]?.generated_text ?? '').trim();
+  setEngineResult('trocr', text, [
+    ['load', (trocrLoadMs ?? 0).toFixed(0) + 'ms'],
+    ['recognize', recMs.toFixed(0) + 'ms'],
+  ]);
+}
+
+// ── main capture flow ────────────────────────────────────────────
+$('captureBtn').addEventListener('click', async () => {
+  if (!frameSource) return;
+  $('captureBtn').disabled = true;
+  try {
+    setStatus('Capturing frame…', 'work');
+    const frame = captureFrame(frameSource);
+
+    await ensureDetector();
+    setStatus('Detecting book…', 'work');
+    const t0 = performance.now();
+    const preds = await detector.detect(frame);
+    const detectMs = performance.now() - t0;
+    const book = preds.filter(p => p.class === 'book').sort((a, b) => b.score - a.score)[0];
+
+    let cropCanvas, fallback = false;
+    if (book) {
+      drawDetection(book.bbox, book.score);
+      cropCanvas = cropFrom(frame, book.bbox, 8);
+      $('bookMeta').textContent =
+        `${Math.round(book.bbox[2])}×${Math.round(book.bbox[3])}px · score ${(book.score * 100).toFixed(1)}% · detect ${detectMs.toFixed(0)}ms`;
+    } else {
+      fallback = true;
+      cropCanvas = frame;
+      clearOverlay();
+      $('bookMeta').textContent = `no book detected — using full frame · detect ${detectMs.toFixed(0)}ms`;
+    }
+    $('bookCrop').src = cropCanvas.toDataURL('image/png');
+
+    const { canvas: ocrInput, rotated } = rotateIfPortrait(cropCanvas);
+    $('ocrCrop').src = ocrInput.toDataURL('image/png');
+    $('ocrMeta').textContent = `${ocrInput.width}×${ocrInput.height}px${rotated ? ' · rotated 90° CW' : ''}`;
+    $('crops').hidden = false;
+
+    setStatus(fallback
+      ? 'No book detected — running OCR on full frame, in parallel.'
+      : 'Book found. Running OCR engines in parallel.', 'work');
+
+    const results = await Promise.allSettled([
+      tesseractRun(ocrInput).catch(e => {
+        setEngineState('tesseract', 'error', 'err');
+        setEngineResult('tesseract', 'Error: ' + (e.message || e), []);
+        throw e;
+      }),
+      trocrRun(ocrInput).catch(e => {
+        setEngineState('trocr', 'error', 'err');
+        setEngineResult('trocr', 'Error: ' + (e.message || e), []);
+        throw e;
+      }),
+    ]);
+
+    const fails = results.filter(r => r.status === 'rejected').length;
+    if (fails === 2) setStatus('Both engines failed. Check console for details.', 'err');
+    else if (fails === 1) setStatus('Done — one engine failed. Compare what we got.', 'err');
+    else setStatus('Done. Compare results above.', 'ok');
+  } catch (e) {
+    console.error(e);
+    setStatus('Error: ' + (e.message || e), 'err');
+  } finally {
+    $('captureBtn').disabled = false;
+  }
+});
+
+// keep overlay sized to stage on resize so the bbox stays correct
+new ResizeObserver(() => {
+  const r = stage.getBoundingClientRect();
+  overlay.width = r.width;
+  overlay.height = r.height;
+}).observe(stage);
+</script>
+</body>
+</html>
