@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Echolocation</title>
+<style>
+  :root {
+    --bg: #fbfbf8;
+    --ink: #1a1a1f;
+    --muted: #6a6a73;
+    --rule: #e5e3dc;
+    --accent: #b3261e;
+    --code-bg: #f0eee6;
+    --grid: #d8d6cf;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15151a;
+      --ink: #e8e6df;
+      --muted: #8e8e98;
+      --rule: #2a2a32;
+      --accent: #ff7a6e;
+      --code-bg: #1f1f26;
+      --grid: #353540;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--ink); margin: 0; }
+  body {
+    font: 16px/1.4 ui-sans-serif, system-ui, sans-serif;
+    max-width: 620px; margin: 0 auto; padding: 1.2rem 1rem 3rem;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 .35rem; letter-spacing: -0.01em; }
+  p.lead { color: var(--muted); margin: 0 0 1rem; font-size: .92rem; }
+  .controls {
+    display: grid; grid-template-columns: 1fr 1fr; gap: .5rem;
+    margin: .8rem 0;
+  }
+  button {
+    padding: .8rem 1rem;
+    background: var(--bg); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 4px;
+    font: 600 .9rem ui-sans-serif, system-ui, sans-serif;
+    cursor: pointer; touch-action: manipulation;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  button.active { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  button:disabled { opacity: .4; cursor: default; }
+  .row {
+    display: flex; align-items: center; gap: .6rem;
+    margin: .7rem 0; font-size: .85rem;
+  }
+  .row label { color: var(--muted); min-width: 5.5rem; }
+  .row input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
+  .row .val { font: ui-monospace, monospace; color: var(--ink); min-width: 4.5rem; text-align: right; }
+  .canvas-wrap {
+    position: relative; margin: .6rem 0 .2rem;
+    background: #000; border-radius: 4px; overflow: hidden;
+  }
+  canvas { display: block; width: 100%; }
+  .axis {
+    display: flex; justify-content: space-between;
+    font: .7rem ui-monospace, monospace; color: var(--muted);
+    margin: .15rem .15rem 1rem;
+  }
+  .results {
+    background: var(--code-bg); border-radius: 4px;
+    padding: .7rem .9rem; margin: 1rem 0;
+    font: .85rem ui-monospace, monospace;
+  }
+  .results .label { color: var(--muted); display: inline-block; min-width: 6.5rem; }
+  .results .value { color: var(--ink); font-weight: 600; }
+  .results .row-r { margin: .15rem 0; }
+  .warning {
+    background: var(--code-bg); border-left: 3px solid var(--accent);
+    padding: .55rem .8rem; font-size: .82rem; color: var(--muted);
+    border-radius: 0 4px 4px 0; margin: .8rem 0;
+  }
+  .pings { font: .8rem ui-monospace, monospace; color: var(--muted);
+           max-height: 5.5rem; overflow-y: auto; padding: .4rem .6rem;
+           background: var(--code-bg); border-radius: 4px; margin: .4rem 0; }
+  .pings div { color: var(--ink); }
+  footer {
+    margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--rule);
+    color: var(--muted); font-size: .8rem;
+  }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+
+<h1>Echolocation</h1>
+<p class="lead">The phone emits a short upward chirp from the speaker and listens for echoes on the mic. Cross-correlation against the chirp template turns the recording into a distance trace — point it at a wall and watch the peak slide.</p>
+
+<div class="warning">
+  <strong>It clicks rapidly.</strong> The chirp sweeps 4–14 kHz over 8 ms and repeats up to ~4×/sec. Best in a quiet room, hard surfaces, phone held vertical with the speaker pointing at the target. Headphones <em>defeat</em> the demo — this needs the speaker to put real sound into the room.
+</div>
+
+<div class="controls">
+  <button id="start" class="primary">Start</button>
+  <button id="stop" disabled>Stop</button>
+</div>
+
+<div class="row">
+  <label>Repeat rate</label>
+  <input type="range" id="rate" min="1" max="6" step="0.5" value="3">
+  <span class="val" id="rateVal">3.0 Hz</span>
+</div>
+<div class="row">
+  <label>Volume</label>
+  <input type="range" id="vol" min="0" max="100" value="55">
+  <span class="val" id="volVal">55%</span>
+</div>
+<div class="row">
+  <label>Max range</label>
+  <input type="range" id="maxRange" min="1" max="12" step="0.5" value="6">
+  <span class="val" id="maxRangeVal">6.0 m</span>
+</div>
+
+<div class="canvas-wrap">
+  <canvas id="trace" width="600" height="220"></canvas>
+</div>
+<div class="axis"><span>0 m</span><span id="axMid">3 m</span><span id="axMax">6 m</span></div>
+
+<div class="canvas-wrap">
+  <canvas id="waterfall" width="600" height="180"></canvas>
+</div>
+<p style="font-size: .78rem; color: var(--muted); margin: .15rem 0 1rem; text-align: center;">
+  Waterfall: time scrolls down. Bright stripes = persistent echoes (walls). Wandering stripes = a moving object (a hand, a person walking).
+</p>
+
+<div class="results">
+  <div class="row-r"><span class="label">Closest echo:</span> <span class="value" id="nearVal">—</span></div>
+  <div class="row-r"><span class="label">All echoes:</span> <span class="value" id="echoVal">—</span></div>
+  <div class="row-r"><span class="label">Sample rate:</span> <span class="value" id="srVal">—</span></div>
+  <div class="row-r"><span class="label">Resolution:</span> <span class="value" id="resVal">—</span></div>
+</div>
+
+<div class="pings" id="log"></div>
+
+<footer>
+  <p>Speed of sound at room temperature is ~343 m/s, so a one-way meter is ~2.9 ms. The first peak in cross-correlation marks the direct speaker→mic acoustic path through the phone body and is treated as <code>t=0</code>; later peaks divided by 2× sample rate × 343 give round-trip distances. The chirp's bandwidth (10 kHz) sets the time-resolution after correlation: theoretically ~17 mm, in practice limited by speaker/mic response, room reverberation, and your phone's audio I/O latency stability.</p>
+  <p><a href="index.html">← all demos</a></p>
+</footer>
+
+<script>
+const SOUND_M_PER_S = 343;
+const CHIRP_F0 = 4000;
+const CHIRP_F1 = 14000;
+const CHIRP_DUR = 0.008; // 8 ms
+const ANALYSIS_WINDOW = 0.10; // 100 ms after chirp start
+
+const $ = id => document.getElementById(id);
+const startBtn = $('start');
+const stopBtn = $('stop');
+const rateSlider = $('rate'), rateVal = $('rateVal');
+const volSlider = $('vol'), volValEl = $('volVal');
+const maxRangeSlider = $('maxRange'), maxRangeVal = $('maxRangeVal');
+const traceCanvas = $('trace');
+const traceCtx = traceCanvas.getContext('2d');
+const wfCanvas = $('waterfall');
+const wfCtx = wfCanvas.getContext('2d', { willReadFrequently: true });
+const logEl = $('log');
+
+let audioCtx = null;
+let stream = null;
+let micSource = null;
+let captureNode = null;
+let chirpBuffer = null;
+let chirpTemplate = null;
+let recBuf = null;
+let recWritePos = 0;
+let recCaptureLen = 0;
+let recReadyResolve = null;
+let running = false;
+let pingTimer = null;
+let lastPingNum = 0;
+
+rateSlider.oninput = () => rateVal.textContent = parseFloat(rateSlider.value).toFixed(1) + ' Hz';
+volSlider.oninput = () => volValEl.textContent = volSlider.value + '%';
+maxRangeSlider.oninput = () => {
+  const v = parseFloat(maxRangeSlider.value);
+  maxRangeVal.textContent = v.toFixed(1) + ' m';
+  $('axMid').textContent = (v/2).toFixed(1) + ' m';
+  $('axMax').textContent = v.toFixed(1) + ' m';
+};
+
+function makeChirpBuffer(ctx) {
+  const sr = ctx.sampleRate;
+  const N = Math.round(CHIRP_DUR * sr);
+  const buf = ctx.createBuffer(1, N, sr);
+  const data = buf.getChannelData(0);
+  // linear sweep with Hann envelope and instantaneous-phase integration
+  const k = (CHIRP_F1 - CHIRP_F0) / CHIRP_DUR;
+  for (let i = 0; i < N; i++) {
+    const t = i / sr;
+    const phase = 2 * Math.PI * (CHIRP_F0 * t + 0.5 * k * t * t);
+    const env = 0.5 * (1 - Math.cos(2 * Math.PI * i / (N - 1)));
+    data[i] = Math.sin(phase) * env;
+  }
+  // template for cross-correlation = same samples
+  return { buffer: buf, template: Float32Array.from(data) };
+}
+
+const workletCode = `
+class CaptureProcessor extends AudioWorkletProcessor {
+  process(inputs) {
+    const ch = inputs[0][0];
+    if (ch && ch.length) this.port.postMessage(ch.slice(0));
+    return true;
+  }
+}
+registerProcessor('capture', CaptureProcessor);
+`;
+
+async function init() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+  stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+      channelCount: 1
+    }
+  });
+  micSource = audioCtx.createMediaStreamSource(stream);
+
+  const url = URL.createObjectURL(new Blob([workletCode], { type: 'text/javascript' }));
+  await audioCtx.audioWorklet.addModule(url);
+  captureNode = new AudioWorkletNode(audioCtx, 'capture');
+  captureNode.port.onmessage = onAudioBlock;
+  micSource.connect(captureNode);
+
+  const chirp = makeChirpBuffer(audioCtx);
+  chirpBuffer = chirp.buffer;
+  chirpTemplate = chirp.template;
+
+  recCaptureLen = Math.round(ANALYSIS_WINDOW * audioCtx.sampleRate);
+  recBuf = new Float32Array(recCaptureLen);
+
+  $('srVal').textContent = audioCtx.sampleRate.toFixed(0) + ' Hz';
+  const oneSampleRTm = SOUND_M_PER_S / audioCtx.sampleRate;
+  $('resVal').textContent = (oneSampleRTm * 100).toFixed(1) + ' cm/sample (round-trip)';
+
+  // clear waterfall
+  wfCtx.fillStyle = '#000';
+  wfCtx.fillRect(0, 0, wfCanvas.width, wfCanvas.height);
+}
+
+function onAudioBlock(e) {
+  if (!recReadyResolve) return;
+  const block = e.data;
+  const remaining = recBuf.length - recWritePos;
+  if (remaining <= 0) return;
+  const toWrite = Math.min(block.length, remaining);
+  recBuf.set(block.subarray(0, toWrite), recWritePos);
+  recWritePos += toWrite;
+  if (recWritePos >= recBuf.length) {
+    const r = recReadyResolve;
+    recReadyResolve = null;
+    r();
+  }
+}
+
+function recordOnce() {
+  return new Promise(resolve => {
+    recBuf.fill(0);
+    recWritePos = 0;
+    recReadyResolve = resolve;
+  });
+}
+
+// cross-correlate template (length M) with signal (length N), return signal-length result
+// corr[k] = sum_i template[i] * signal[k+i], for k in [0, N-M]
+function crossCorrelate(template, signal) {
+  const M = template.length;
+  const N = signal.length;
+  const out = new Float32Array(N - M);
+  for (let k = 0; k < out.length; k++) {
+    let s = 0;
+    for (let i = 0; i < M; i++) s += template[i] * signal[k + i];
+    out[k] = s;
+  }
+  return out;
+}
+
+function findPeaks(arr, startIdx, endIdx, threshold, refractory) {
+  const peaks = [];
+  let lastPeak = -refractory;
+  for (let i = Math.max(1, startIdx); i < endIdx - 1; i++) {
+    const v = arr[i];
+    if (v > threshold && v >= arr[i - 1] && v > arr[i + 1] && i - lastPeak >= refractory) {
+      peaks.push({ idx: i, val: v });
+      lastPeak = i;
+    }
+  }
+  return peaks;
+}
+
+async function fireChirpAndAnalyze() {
+  const recordPromise = recordOnce();
+  const src = audioCtx.createBufferSource();
+  src.buffer = chirpBuffer;
+  const gain = audioCtx.createGain();
+  gain.gain.value = parseFloat(volSlider.value) / 100 * 0.5;
+  src.connect(gain).connect(audioCtx.destination);
+  src.start(audioCtx.currentTime + 0.005);
+  await recordPromise;
+
+  // copy out, magnitude-squared correlation for clearer peaks
+  const signal = recBuf.slice();
+  const corr = crossCorrelate(chirpTemplate, signal);
+
+  // rectified envelope
+  const env = new Float32Array(corr.length);
+  for (let i = 0; i < corr.length; i++) env[i] = corr[i] * corr[i];
+
+  // find global max in first 30 ms — that's the direct path
+  const sr = audioCtx.sampleRate;
+  const directSearchEnd = Math.min(env.length, Math.round(0.030 * sr));
+  let directIdx = 0, directVal = 0;
+  for (let i = 0; i < directSearchEnd; i++) {
+    if (env[i] > directVal) { directVal = env[i]; directIdx = i; }
+  }
+
+  // find echo peaks after the direct path, above threshold relative to direct
+  const maxRangeM = parseFloat(maxRangeSlider.value);
+  const samplesPerMeterRT = sr * 2 / SOUND_M_PER_S;
+  const searchEnd = Math.min(env.length, directIdx + Math.round(maxRangeM * samplesPerMeterRT));
+
+  // dead zone right after direct path (chirp duration in samples) so we don't pick up the chirp's own ringing
+  const deadZone = Math.round(CHIRP_DUR * sr * 1.2);
+  const echoStart = directIdx + deadZone;
+
+  // adaptive threshold: a fraction of direct peak
+  const threshold = directVal * 0.06;
+  const refractory = Math.round(0.0015 * sr); // 1.5 ms ~= 25 cm round-trip
+  const peaks = findPeaks(env, echoStart, searchEnd, threshold, refractory);
+
+  // sort by value descending, keep top 5
+  peaks.sort((a, b) => b.val - a.val);
+  const topPeaks = peaks.slice(0, 5).sort((a, b) => a.idx - b.idx);
+
+  drawTrace(env, directIdx, searchEnd, topPeaks, directVal);
+  pushWaterfallRow(env, directIdx, searchEnd, directVal);
+  reportPeaks(directIdx, topPeaks, sr);
+}
+
+function drawTrace(env, directIdx, endIdx, peaks, directVal) {
+  const c = traceCanvas, ctx = traceCtx;
+  const w = c.width, h = c.height;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const sr = audioCtx.sampleRate;
+  const samplesPerMeterRT = sr * 2 / SOUND_M_PER_S;
+  const maxRangeM = parseFloat(maxRangeSlider.value);
+
+  // grid: every 1m
+  ctx.strokeStyle = '#1f1f1f';
+  ctx.lineWidth = 1;
+  for (let m = 1; m <= Math.floor(maxRangeM); m++) {
+    const x = Math.round(m / maxRangeM * w);
+    ctx.beginPath();
+    ctx.moveTo(x, 0); ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+
+  // find local max for normalization (skip direct peak)
+  let lmax = 1e-12;
+  const startNorm = directIdx + Math.round(CHIRP_DUR * sr * 1.2);
+  for (let i = startNorm; i < endIdx; i++) if (env[i] > lmax) lmax = env[i];
+  const norm = Math.max(lmax, directVal * 0.02);
+
+  // draw envelope
+  ctx.strokeStyle = '#ff7a3a';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  for (let x = 0; x < w; x++) {
+    const t = x / (w - 1);
+    const idx = directIdx + Math.round(t * maxRangeM * samplesPerMeterRT);
+    if (idx >= env.length) break;
+    const v = Math.min(1, env[idx] / norm);
+    const y = h - v * (h - 6) - 2;
+    if (x === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // draw peaks
+  ctx.fillStyle = '#ffd45a';
+  ctx.font = '11px ui-monospace, monospace';
+  for (const p of peaks) {
+    const distM = (p.idx - directIdx) / samplesPerMeterRT;
+    if (distM > maxRangeM) continue;
+    const x = distM / maxRangeM * w;
+    ctx.strokeStyle = '#ffd45a';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    ctx.fillText(distM.toFixed(2) + 'm', Math.min(x + 3, w - 50), 12);
+  }
+}
+
+function pushWaterfallRow(env, directIdx, endIdx, directVal) {
+  const c = wfCanvas, ctx = wfCtx;
+  const w = c.width, h = c.height;
+  ctx.drawImage(c, 0, 0, w, h - 1, 0, 1, w, h - 1);
+  const row = ctx.createImageData(w, 1);
+  const sr = audioCtx.sampleRate;
+  const samplesPerMeterRT = sr * 2 / SOUND_M_PER_S;
+  const maxRangeM = parseFloat(maxRangeSlider.value);
+
+  // local max excluding direct
+  let lmax = 1e-12;
+  const startNorm = directIdx + Math.round(CHIRP_DUR * sr * 1.2);
+  for (let i = startNorm; i < endIdx; i++) if (env[i] > lmax) lmax = env[i];
+  const norm = Math.max(lmax, directVal * 0.02);
+
+  for (let x = 0; x < w; x++) {
+    const t = x / (w - 1);
+    const idx = directIdx + Math.round(t * maxRangeM * samplesPerMeterRT);
+    if (idx >= env.length) continue;
+    const v = Math.min(1, env[idx] / norm);
+    const [r, g, b] = colormap(v);
+    const j = x * 4;
+    row.data[j] = r; row.data[j+1] = g; row.data[j+2] = b; row.data[j+3] = 255;
+  }
+  ctx.putImageData(row, 0, 0);
+}
+
+function colormap(t) {
+  t = Math.max(0, Math.min(1, t));
+  if (t < 0.20) { const k = t / 0.20; return [k * 50, 0, k * 70]; }
+  if (t < 0.45) { const k = (t - 0.20) / 0.25; return [50 + k * 150, 0, 70 - k * 70]; }
+  if (t < 0.70) { const k = (t - 0.45) / 0.25; return [200 + k * 55, k * 140, 0]; }
+  if (t < 0.90) { const k = (t - 0.70) / 0.20; return [255, 140 + k * 100, k * 80]; }
+  const k = (t - 0.90) / 0.10; return [255, 240 + k * 15, 80 + k * 175];
+}
+
+function reportPeaks(directIdx, peaks, sr) {
+  const samplesPerMeterRT = sr * 2 / SOUND_M_PER_S;
+  if (!peaks.length) {
+    $('nearVal').textContent = '— (no echoes above floor)';
+    $('echoVal').textContent = '—';
+    return;
+  }
+  const dists = peaks.map(p => (p.idx - directIdx) / samplesPerMeterRT);
+  dists.sort((a, b) => a - b);
+  $('nearVal').textContent = dists[0].toFixed(2) + ' m';
+  $('echoVal').textContent = dists.map(d => d.toFixed(2) + 'm').join('  ');
+
+  lastPingNum++;
+  const line = document.createElement('div');
+  line.textContent = `#${lastPingNum} → ${dists.map(d => d.toFixed(2) + 'm').join(', ')}`;
+  logEl.prepend(line);
+  while (logEl.children.length > 20) logEl.lastChild.remove();
+}
+
+async function pingLoop() {
+  if (!running) return;
+  try {
+    await fireChirpAndAnalyze();
+  } catch (e) {
+    console.error(e);
+  }
+  if (!running) return;
+  const period = 1000 / parseFloat(rateSlider.value);
+  pingTimer = setTimeout(pingLoop, Math.max(120, period - 100));
+}
+
+startBtn.addEventListener('click', async () => {
+  startBtn.disabled = true;
+  startBtn.textContent = 'Initialising…';
+  try {
+    if (!audioCtx) await init();
+    running = true;
+    startBtn.textContent = 'Pinging…';
+    startBtn.classList.remove('primary');
+    startBtn.classList.add('active');
+    stopBtn.disabled = false;
+    pingLoop();
+  } catch (e) {
+    alert('Audio init failed: ' + e.message);
+    startBtn.disabled = false;
+    startBtn.textContent = 'Start';
+  }
+});
+
+stopBtn.addEventListener('click', () => {
+  running = false;
+  if (pingTimer) clearTimeout(pingTimer);
+  startBtn.disabled = false;
+  startBtn.textContent = 'Start';
+  startBtn.classList.add('primary');
+  startBtn.classList.remove('active');
+  stopBtn.disabled = true;
+});
+
+// initial axis labels
+maxRangeSlider.dispatchEvent(new Event('input'));
+</script>
+
+</body>
+</html>

@@ -1,0 +1,720 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gait Fingerprint</title>
+<style>
+  :root {
+    --bg: #fbfbf8;
+    --ink: #1a1a1f;
+    --muted: #6a6a73;
+    --rule: #e5e3dc;
+    --accent: #b3261e;
+    --code-bg: #f0eee6;
+    --grid: #d8d6cf;
+    --good: #16a34a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15151a;
+      --ink: #e8e6df;
+      --muted: #8e8e98;
+      --rule: #2a2a32;
+      --accent: #ff7a6e;
+      --code-bg: #1f1f26;
+      --grid: #353540;
+      --good: #4ade80;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--ink); margin: 0; }
+  body {
+    font: 16px/1.4 ui-sans-serif, system-ui, sans-serif;
+    max-width: 620px; margin: 0 auto; padding: 1.2rem 1rem 3rem;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 .35rem; letter-spacing: -0.01em; }
+  h2 { font-size: 1rem; margin: 1.2rem 0 .4rem; color: var(--muted);
+       font-weight: 600; letter-spacing: .03em; text-transform: uppercase; font-size: .78rem; }
+  p.lead { color: var(--muted); margin: 0 0 1rem; font-size: .92rem; }
+  .controls {
+    display: grid; grid-template-columns: 1fr 1fr; gap: .5rem;
+    margin: .8rem 0;
+  }
+  button {
+    padding: .8rem 1rem;
+    background: var(--bg); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 4px;
+    font: 600 .9rem ui-sans-serif, system-ui, sans-serif;
+    cursor: pointer; touch-action: manipulation;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  button.active { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  button:disabled { opacity: .4; cursor: default; }
+  .progress {
+    height: .5rem; background: var(--code-bg); border-radius: 3px;
+    overflow: hidden; margin: .8rem 0;
+  }
+  .progress > div { height: 100%; background: var(--accent); width: 0%;
+                    transition: width .15s linear; }
+  .canvas-wrap {
+    position: relative; margin: .4rem 0 .8rem;
+    background: var(--code-bg); border-radius: 4px; overflow: hidden;
+  }
+  canvas { display: block; width: 100%; }
+  .results {
+    background: var(--code-bg); border-radius: 4px;
+    padding: .7rem .9rem; margin: .8rem 0 1rem;
+    font: .85rem ui-monospace, monospace;
+  }
+  .results .label { color: var(--muted); display: inline-block; min-width: 9rem; }
+  .results .value { color: var(--ink); font-weight: 600; }
+  .results .row-r { margin: .15rem 0; }
+  .warning {
+    background: var(--code-bg); border-left: 3px solid var(--accent);
+    padding: .55rem .8rem; font-size: .82rem; color: var(--muted);
+    border-radius: 0 4px 4px 0; margin: .8rem 0;
+  }
+  .legend {
+    display: flex; gap: 1rem; font-size: .78rem;
+    color: var(--muted); margin: 0 0 .8rem;
+    align-items: center; flex-wrap: wrap; justify-content: center;
+  }
+  .legend .swatch {
+    display: inline-block; width: 1rem; height: 2px;
+    margin-right: .3rem; vertical-align: middle;
+  }
+  .match-banner {
+    margin: .6rem 0; padding: .6rem .9rem;
+    border-radius: 4px; font-size: .9rem; text-align: center;
+    background: var(--code-bg);
+  }
+  .match-banner.match { color: var(--good); border: 1px solid var(--good); }
+  .match-banner.miss { color: var(--accent); border: 1px solid var(--accent); }
+  .row {
+    display: flex; align-items: center; gap: .6rem;
+    margin: .6rem 0; font-size: .85rem;
+  }
+  .row label { color: var(--muted); min-width: 5.5rem; }
+  .row input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
+  .row .val { font: ui-monospace, monospace; color: var(--ink); min-width: 4rem; text-align: right; }
+  .hidden { display: none; }
+  footer {
+    margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--rule);
+    color: var(--muted); font-size: .8rem;
+  }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+
+<h1>Gait Fingerprint</h1>
+<p class="lead">Phone in your pocket or hand, walk for 30 seconds. Accelerometer peaks become steps; the timing, symmetry, and bounce pattern of those steps becomes a fingerprint that's surprisingly stable across walks — and surprisingly different between people.</p>
+
+<div class="warning">
+  <strong>Hold the phone consistently.</strong> Same orientation each time (e.g., always portrait in the front pocket of the same trouser leg). The fingerprint is the <em>combination</em> of you and how you carry the phone, so changing pockets changes the result.
+</div>
+
+<div class="row">
+  <label>Duration</label>
+  <input type="range" id="dur" min="10" max="60" step="5" value="30">
+  <span class="val" id="durVal">30 s</span>
+</div>
+
+<div class="controls">
+  <button id="record" class="primary">Start 30 s walk</button>
+  <button id="cancel" disabled>Cancel</button>
+</div>
+
+<div class="progress"><div id="progBar"></div></div>
+
+<h2>Live acceleration</h2>
+<div class="canvas-wrap">
+  <canvas id="live" width="600" height="140"></canvas>
+</div>
+
+<div id="resultBlock" class="hidden">
+<h2>Step waveform overlay</h2>
+<div class="canvas-wrap">
+  <canvas id="steps" width="600" height="180"></canvas>
+</div>
+<div class="legend">
+  <span><span class="swatch" style="background: var(--accent); opacity:.35"></span>each detected step</span>
+  <span><span class="swatch" style="background: var(--ink)"></span>median across all steps</span>
+</div>
+
+<h2>Fingerprint</h2>
+<div class="canvas-wrap" style="background: var(--bg);">
+  <canvas id="radar" width="600" height="360"></canvas>
+</div>
+<div class="legend">
+  <span><span class="swatch" style="background: var(--accent)"></span>this walk</span>
+  <span id="savedLegend" class="hidden"><span class="swatch" style="background: var(--ink); opacity:.5; border-top:2px dashed var(--ink)"></span>saved fingerprint</span>
+</div>
+
+<div id="matchBanner" class="match-banner hidden"></div>
+
+<div class="results">
+  <div class="row-r"><span class="label">Steps detected:</span> <span class="value" id="stepsVal">—</span></div>
+  <div class="row-r"><span class="label">Cadence:</span> <span class="value" id="cadenceVal">—</span></div>
+  <div class="row-r"><span class="label">Step interval:</span> <span class="value" id="intervalVal">—</span></div>
+  <div class="row-r"><span class="label">Symmetry:</span> <span class="value" id="symmetryVal">—</span></div>
+  <div class="row-r"><span class="label">Impact:</span> <span class="value" id="impactVal">—</span></div>
+  <div class="row-r"><span class="label">Bounce ratio:</span> <span class="value" id="bounceVal">—</span></div>
+  <div class="row-r"><span class="label">Spectral peak:</span> <span class="value" id="spectralVal">—</span></div>
+  <div class="row-r"><span class="label">Sample rate:</span> <span class="value" id="srVal">—</span></div>
+</div>
+
+<div class="controls">
+  <button id="save">Save as my fingerprint</button>
+  <button id="clearSaved">Forget saved</button>
+</div>
+</div>
+
+<footer>
+  <p>Step detection: detrended acceleration magnitude, peak-pick above an adaptive threshold with a 250 ms refractory. Symmetry compares mean step interval on odd vs even strides (a smooth gait alternates evenly; a limp produces an even/odd gap). Spectral peak comes from a 1024-point FFT of the magnitude signal, indicating dominant step frequency. Bounce ratio is variance/mean of vertical accel — a heel-striker has a higher bounce than a smooth walker.</p>
+  <p>Saved fingerprints live in <code>localStorage</code> on this device only — nothing leaves the browser. Use "Forget saved" to wipe.</p>
+  <p><a href="index.html">← all demos</a></p>
+</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const STORAGE_KEY = 'gait-fingerprint-v1';
+const FEATURES = [
+  { key: 'cadence',      label: 'Cadence',      lo: 60,   hi: 180,  unit: ' spm' },
+  { key: 'intervalMs',   label: 'Step interval', lo: 1100, hi: 350,  unit: ' ms', invert: true },
+  { key: 'intervalCv',   label: 'Regularity',    lo: 0.30, hi: 0.02, unit: '', invert: true },
+  { key: 'symmetry',     label: 'Symmetry',      lo: 0.5,  hi: 1.0,  unit: '' },
+  { key: 'impact',       label: 'Impact',        lo: 0.5,  hi: 8.0,  unit: ' m/s²' },
+  { key: 'bounce',       label: 'Bounce',        lo: 0.05, hi: 1.5,  unit: '' },
+  { key: 'spectralHz',   label: 'Step Hz',       lo: 0.8,  hi: 3.5,  unit: ' Hz' }
+];
+
+const recordBtn = $('record');
+const cancelBtn = $('cancel');
+const durSlider = $('dur'), durVal = $('durVal');
+const progBar = $('progBar');
+const liveCanvas = $('live'), liveCtx = liveCanvas.getContext('2d');
+const stepsCanvas = $('steps'), stepsCtx = stepsCanvas.getContext('2d');
+const radarCanvas = $('radar'), radarCtx = radarCanvas.getContext('2d');
+
+durSlider.oninput = () => {
+  durVal.textContent = durSlider.value + ' s';
+  recordBtn.textContent = `Start ${durSlider.value} s walk`;
+};
+
+let recording = false;
+let samples = [];
+let startTime = 0;
+let recordDurMs = 30000;
+let liveDrawTimer = null;
+
+function getCss(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
+}
+
+function onMotion(e) {
+  if (!recording) return;
+  const t = performance.now() - startTime;
+  if (t > recordDurMs) {
+    finishRecording();
+    return;
+  }
+  const a = e.accelerationIncludingGravity || e.acceleration;
+  if (!a) return;
+  const ax = a.x || 0, ay = a.y || 0, az = a.z || 0;
+  samples.push({ t, ax, ay, az, mag: Math.sqrt(ax*ax + ay*ay + az*az) });
+  progBar.style.width = (100 * t / recordDurMs) + '%';
+}
+
+async function startRecording() {
+  if (typeof DeviceMotionEvent !== 'undefined' &&
+      typeof DeviceMotionEvent.requestPermission === 'function') {
+    try {
+      const result = await DeviceMotionEvent.requestPermission();
+      if (result !== 'granted') {
+        alert('Motion permission denied');
+        return;
+      }
+    } catch (e) {
+      alert('Motion permission failed: ' + e.message);
+      return;
+    }
+  }
+  if (typeof DeviceMotionEvent === 'undefined') {
+    alert('DeviceMotionEvent not available on this device.');
+    return;
+  }
+
+  $('resultBlock').classList.add('hidden');
+  $('matchBanner').classList.add('hidden');
+  samples = [];
+  recordDurMs = parseInt(durSlider.value, 10) * 1000;
+  startTime = performance.now();
+  recording = true;
+
+  recordBtn.disabled = true;
+  recordBtn.textContent = 'Walking…';
+  recordBtn.classList.remove('primary');
+  recordBtn.classList.add('active');
+  cancelBtn.disabled = false;
+
+  window.addEventListener('devicemotion', onMotion);
+  liveDrawTimer = setInterval(drawLive, 60);
+}
+
+function cancelRecording() {
+  recording = false;
+  window.removeEventListener('devicemotion', onMotion);
+  clearInterval(liveDrawTimer);
+  progBar.style.width = '0%';
+  recordBtn.disabled = false;
+  recordBtn.textContent = `Start ${durSlider.value} s walk`;
+  recordBtn.classList.add('primary');
+  recordBtn.classList.remove('active');
+  cancelBtn.disabled = true;
+}
+
+function finishRecording() {
+  recording = false;
+  window.removeEventListener('devicemotion', onMotion);
+  clearInterval(liveDrawTimer);
+  recordBtn.disabled = false;
+  recordBtn.textContent = `Start ${durSlider.value} s walk`;
+  recordBtn.classList.add('primary');
+  recordBtn.classList.remove('active');
+  cancelBtn.disabled = true;
+  progBar.style.width = '100%';
+  setTimeout(() => progBar.style.width = '0%', 800);
+
+  if (samples.length < 50) {
+    alert('Not enough motion samples captured. Make sure permission is granted and try again.');
+    return;
+  }
+  analyze();
+}
+
+function drawLive() {
+  const c = liveCanvas, ctx = liveCtx;
+  const w = c.width, h = c.height;
+  ctx.fillStyle = getCss('--code-bg');
+  ctx.fillRect(0, 0, w, h);
+
+  if (samples.length < 2) return;
+  const lookback = 8000;
+  const tNow = performance.now() - startTime;
+  const tFrom = Math.max(0, tNow - lookback);
+
+  // grid
+  ctx.strokeStyle = getCss('--grid');
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, h/2); ctx.lineTo(w, h/2);
+  ctx.stroke();
+
+  let minV = -25, maxV = 25;
+  ctx.strokeStyle = getCss('--accent');
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  let started = false;
+  for (const s of samples) {
+    if (s.t < tFrom) continue;
+    const x = (s.t - tFrom) / lookback * w;
+    const y = h/2 - (s.mag - 9.8) / (maxV - minV) * h;
+    if (!started) { ctx.moveTo(x, y); started = true; }
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+function detrend(values, windowSize) {
+  // running mean subtraction
+  const out = new Float32Array(values.length);
+  let sum = 0;
+  const window = [];
+  for (let i = 0; i < values.length; i++) {
+    sum += values[i];
+    window.push(values[i]);
+    if (window.length > windowSize) sum -= window.shift();
+    const mean = sum / window.length;
+    out[i] = values[i] - mean;
+  }
+  return out;
+}
+
+function findStepPeaks(values, sampleRate, refractoryMs, threshold) {
+  const peaks = [];
+  const refractorySamples = Math.round(refractoryMs / 1000 * sampleRate);
+  let lastPeak = -refractorySamples;
+  for (let i = 1; i < values.length - 1; i++) {
+    if (values[i] > threshold && values[i] >= values[i - 1] && values[i] > values[i + 1]) {
+      if (i - lastPeak >= refractorySamples) {
+        peaks.push(i);
+        lastPeak = i;
+      }
+    }
+  }
+  return peaks;
+}
+
+function fft(real, imag) {
+  // iterative Cooley-Tukey FFT, in-place. Length must be a power of 2.
+  const n = real.length;
+  let j = 0;
+  for (let i = 0; i < n; i++) {
+    if (i < j) {
+      [real[i], real[j]] = [real[j], real[i]];
+      [imag[i], imag[j]] = [imag[j], imag[i]];
+    }
+    let m = n >> 1;
+    while (m >= 1 && j >= m) { j -= m; m >>= 1; }
+    j += m;
+  }
+  for (let size = 2; size <= n; size <<= 1) {
+    const half = size >> 1;
+    const theta = -2 * Math.PI / size;
+    for (let start = 0; start < n; start += size) {
+      for (let k = 0; k < half; k++) {
+        const ang = theta * k;
+        const c = Math.cos(ang), s = Math.sin(ang);
+        const i1 = start + k, i2 = start + k + half;
+        const tr = real[i2] * c - imag[i2] * s;
+        const ti = real[i2] * s + imag[i2] * c;
+        real[i2] = real[i1] - tr; imag[i2] = imag[i1] - ti;
+        real[i1] += tr; imag[i1] += ti;
+      }
+    }
+  }
+}
+
+function spectralPeakHz(values, sampleRate) {
+  // resample values to nearest power-of-2 length, take FFT magnitude, find peak in 0.5–4 Hz
+  const N = 1024;
+  const re = new Float64Array(N);
+  const im = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    const t = i / (N - 1) * (values.length - 1);
+    const i0 = Math.floor(t);
+    const i1 = Math.min(values.length - 1, i0 + 1);
+    const f = t - i0;
+    re[i] = values[i0] * (1 - f) + values[i1] * f;
+    // Hann window
+    re[i] *= 0.5 * (1 - Math.cos(2 * Math.PI * i / (N - 1)));
+  }
+  // effective sample rate after resample
+  const effSR = N / (values.length / sampleRate);
+  fft(re, im);
+  let bestBin = 1, bestMag = 0;
+  const fLo = 0.5, fHi = 4;
+  const binLo = Math.max(1, Math.floor(fLo * N / effSR));
+  const binHi = Math.min(N / 2 - 1, Math.ceil(fHi * N / effSR));
+  for (let k = binLo; k <= binHi; k++) {
+    const mag = Math.hypot(re[k], im[k]);
+    if (mag > bestMag) { bestMag = mag; bestBin = k; }
+  }
+  return bestBin * effSR / N;
+}
+
+function analyze() {
+  const sr = (samples.length - 1) * 1000 / (samples[samples.length - 1].t - samples[0].t);
+  $('srVal').textContent = sr.toFixed(1) + ' Hz (' + samples.length + ' samples)';
+
+  const mag = samples.map(s => s.mag);
+  const detrended = detrend(mag, Math.round(sr * 0.6));
+
+  // adaptive threshold: 0.6 * stdev of detrended
+  let mean = 0;
+  for (const v of detrended) mean += v;
+  mean /= detrended.length;
+  let varAcc = 0;
+  for (const v of detrended) varAcc += (v - mean) * (v - mean);
+  const stdev = Math.sqrt(varAcc / detrended.length);
+  const threshold = stdev * 0.7;
+
+  const peaks = findStepPeaks(detrended, sr, 250, threshold);
+  if (peaks.length < 4) {
+    alert('Only ' + peaks.length + ' steps detected. Try a longer or more rhythmic walk.');
+    return;
+  }
+
+  // intervals (ms)
+  const intervals = [];
+  for (let i = 1; i < peaks.length; i++) {
+    intervals.push(samples[peaks[i]].t - samples[peaks[i - 1]].t);
+  }
+  intervals.sort((a, b) => a - b);
+  // trim 10% off each end before stats
+  const trimLo = Math.floor(intervals.length * 0.10);
+  const trimmed = intervals.slice(trimLo, intervals.length - trimLo);
+  const meanInt = trimmed.reduce((a, b) => a + b, 0) / trimmed.length;
+  let v = 0;
+  for (const x of trimmed) v += (x - meanInt) ** 2;
+  const stdInt = Math.sqrt(v / trimmed.length);
+  const cv = stdInt / meanInt;
+
+  // symmetry: even vs odd peak intervals
+  const intervalsRaw = [];
+  for (let i = 1; i < peaks.length; i++) intervalsRaw.push(samples[peaks[i]].t - samples[peaks[i - 1]].t);
+  let oddSum = 0, oddN = 0, evenSum = 0, evenN = 0;
+  for (let i = 0; i < intervalsRaw.length; i++) {
+    if (i % 2 === 0) { oddSum += intervalsRaw[i]; oddN++; }
+    else { evenSum += intervalsRaw[i]; evenN++; }
+  }
+  const oddMean = oddN > 0 ? oddSum / oddN : 0;
+  const evenMean = evenN > 0 ? evenSum / evenN : 0;
+  const symmetry = oddMean && evenMean
+    ? 1 - Math.abs(oddMean - evenMean) / Math.max(oddMean, evenMean)
+    : 0;
+
+  // impact: mean peak height (in detrended)
+  let impactSum = 0;
+  for (const p of peaks) impactSum += detrended[p];
+  const impact = impactSum / peaks.length;
+
+  // bounce: variance/mean of detrended magnitude squared
+  let m2 = 0, v2 = 0;
+  for (const x of detrended) m2 += x * x;
+  m2 /= detrended.length;
+  for (const x of detrended) v2 += (x * x - m2) ** 2;
+  const bounce = Math.sqrt(v2 / detrended.length) / Math.max(0.1, Math.sqrt(m2));
+
+  const spectralHz = spectralPeakHz(detrended, sr);
+  const cadence = 60000 / meanInt;
+
+  const fp = {
+    cadence, intervalMs: meanInt, intervalCv: cv, symmetry,
+    impact, bounce, spectralHz
+  };
+
+  $('stepsVal').textContent = peaks.length;
+  $('cadenceVal').textContent = cadence.toFixed(1) + ' steps/min';
+  $('intervalVal').textContent = meanInt.toFixed(0) + ' ms (CV ' + (cv * 100).toFixed(1) + '%)';
+  $('symmetryVal').textContent = (symmetry * 100).toFixed(1) + '%';
+  $('impactVal').textContent = impact.toFixed(2) + ' m/s²';
+  $('bounceVal').textContent = bounce.toFixed(2);
+  $('spectralVal').textContent = spectralHz.toFixed(2) + ' Hz';
+
+  drawStepWaveforms(detrended, peaks, sr);
+  drawRadar(fp);
+  compareToSaved(fp);
+
+  $('resultBlock').classList.remove('hidden');
+  // stash for save button
+  window._lastFingerprint = fp;
+}
+
+function drawStepWaveforms(detrended, peaks, sr) {
+  const c = stepsCanvas, ctx = stepsCtx;
+  const w = c.width, h = c.height;
+  ctx.fillStyle = getCss('--code-bg');
+  ctx.fillRect(0, 0, w, h);
+
+  const winMs = 800;
+  const halfSamples = Math.round(winMs / 2 / 1000 * sr);
+
+  // baseline
+  ctx.strokeStyle = getCss('--grid');
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, h/2); ctx.lineTo(w, h/2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(w/2, 0); ctx.lineTo(w/2, h); ctx.stroke();
+
+  // collect all step traces aligned at peak
+  const traces = [];
+  for (const p of peaks) {
+    if (p - halfSamples < 0 || p + halfSamples >= detrended.length) continue;
+    const trace = new Float32Array(halfSamples * 2);
+    for (let i = 0; i < trace.length; i++) trace[i] = detrended[p - halfSamples + i];
+    traces.push(trace);
+  }
+  if (!traces.length) return;
+
+  // normalize by global max abs
+  let gmax = 0.1;
+  for (const t of traces) for (const v of t) if (Math.abs(v) > gmax) gmax = Math.abs(v);
+
+  // each trace
+  ctx.strokeStyle = getCss('--accent');
+  ctx.globalAlpha = 0.20;
+  ctx.lineWidth = 1;
+  for (const trace of traces) {
+    ctx.beginPath();
+    for (let i = 0; i < trace.length; i++) {
+      const x = i / (trace.length - 1) * w;
+      const y = h/2 - trace[i] / gmax * (h/2 - 6);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // median trace
+  const median = new Float32Array(traces[0].length);
+  const colVals = new Float32Array(traces.length);
+  for (let i = 0; i < median.length; i++) {
+    for (let k = 0; k < traces.length; k++) colVals[k] = traces[k][i];
+    const sorted = Array.from(colVals).sort((a, b) => a - b);
+    median[i] = sorted[Math.floor(sorted.length / 2)];
+  }
+  ctx.strokeStyle = getCss('--ink');
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < median.length; i++) {
+    const x = i / (median.length - 1) * w;
+    const y = h/2 - median[i] / gmax * (h/2 - 6);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = getCss('--muted');
+  ctx.font = '11px ui-monospace, monospace';
+  ctx.fillText('-' + (winMs/2) + ' ms', 6, h - 6);
+  ctx.fillText('0', w/2 + 4, h - 6);
+  ctx.fillText('+' + (winMs/2) + ' ms', w - 60, h - 6);
+}
+
+function normalizeFeature(name, value) {
+  const f = FEATURES.find(x => x.key === name);
+  if (!f) return 0.5;
+  let t = (value - f.lo) / (f.hi - f.lo);
+  return Math.max(0, Math.min(1, t));
+}
+
+function drawRadar(fp, savedFp) {
+  const c = radarCanvas, ctx = radarCtx;
+  const w = c.width, h = c.height;
+  ctx.fillStyle = getCss('--bg');
+  ctx.fillRect(0, 0, w, h);
+
+  const cx = w / 2, cy = h / 2 + 6;
+  const R = Math.min(w, h) / 2 - 50;
+  const N = FEATURES.length;
+
+  // grid rings
+  ctx.strokeStyle = getCss('--rule');
+  ctx.lineWidth = 1;
+  for (const r of [0.25, 0.5, 0.75, 1.0]) {
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const a = -Math.PI / 2 + i * 2 * Math.PI / N;
+      const x = cx + Math.cos(a) * R * r;
+      const y = cy + Math.sin(a) * R * r;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  // spokes + labels
+  ctx.fillStyle = getCss('--muted');
+  ctx.font = '12px ui-sans-serif, system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < N; i++) {
+    const a = -Math.PI / 2 + i * 2 * Math.PI / N;
+    const x1 = cx + Math.cos(a) * R, y1 = cy + Math.sin(a) * R;
+    ctx.strokeStyle = getCss('--rule');
+    ctx.beginPath();
+    ctx.moveTo(cx, cy); ctx.lineTo(x1, y1); ctx.stroke();
+    const lx = cx + Math.cos(a) * (R + 22);
+    const ly = cy + Math.sin(a) * (R + 22);
+    ctx.fillText(FEATURES[i].label, lx, ly);
+  }
+
+  // saved fingerprint (dashed)
+  if (savedFp) {
+    ctx.strokeStyle = getCss('--ink');
+    ctx.globalAlpha = 0.55;
+    ctx.setLineDash([4, 3]);
+    ctx.lineWidth = 1.5;
+    drawShape(ctx, cx, cy, R, savedFp);
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([]);
+  }
+
+  // current fingerprint (solid + filled)
+  ctx.fillStyle = getCss('--accent');
+  ctx.globalAlpha = 0.20;
+  drawShape(ctx, cx, cy, R, fp, true);
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = getCss('--accent');
+  ctx.lineWidth = 2;
+  drawShape(ctx, cx, cy, R, fp);
+}
+
+function drawShape(ctx, cx, cy, R, fp, fill) {
+  ctx.beginPath();
+  for (let i = 0; i < FEATURES.length; i++) {
+    const f = FEATURES[i];
+    let t = (fp[f.key] - f.lo) / (f.hi - f.lo);
+    t = Math.max(0, Math.min(1, t));
+    const a = -Math.PI / 2 + i * 2 * Math.PI / FEATURES.length;
+    const x = cx + Math.cos(a) * R * t;
+    const y = cy + Math.sin(a) * R * t;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  if (fill) ctx.fill();
+  else ctx.stroke();
+}
+
+function fingerprintDistance(a, b) {
+  // Euclidean in normalised feature space
+  let s = 0;
+  for (const f of FEATURES) {
+    let av = (a[f.key] - f.lo) / (f.hi - f.lo);
+    let bv = (b[f.key] - f.lo) / (f.hi - f.lo);
+    av = Math.max(0, Math.min(1, av));
+    bv = Math.max(0, Math.min(1, bv));
+    s += (av - bv) ** 2;
+  }
+  return Math.sqrt(s / FEATURES.length); // 0..1
+}
+
+function compareToSaved(fp) {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  const banner = $('matchBanner');
+  if (!raw) {
+    banner.classList.add('hidden');
+    $('savedLegend').classList.add('hidden');
+    return;
+  }
+  const saved = JSON.parse(raw);
+  const dist = fingerprintDistance(fp, saved);
+  const similarity = Math.max(0, 1 - dist * 2);
+  banner.classList.remove('hidden');
+  $('savedLegend').classList.remove('hidden');
+  if (dist < 0.12) {
+    banner.className = 'match-banner match';
+    banner.textContent = `Match: ${(similarity * 100).toFixed(0)}% similar to saved fingerprint`;
+  } else {
+    banner.className = 'match-banner miss';
+    banner.textContent = `Different walker or different carry: ${(similarity * 100).toFixed(0)}% similar`;
+  }
+  // redraw radar with saved overlay
+  drawRadar(fp, saved);
+}
+
+recordBtn.addEventListener('click', startRecording);
+cancelBtn.addEventListener('click', cancelRecording);
+$('save').addEventListener('click', () => {
+  if (!window._lastFingerprint) return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(window._lastFingerprint));
+  alert('Saved. Future walks will be compared against this fingerprint.');
+});
+$('clearSaved').addEventListener('click', () => {
+  localStorage.removeItem(STORAGE_KEY);
+  $('matchBanner').classList.add('hidden');
+  $('savedLegend').classList.add('hidden');
+  alert('Saved fingerprint cleared.');
+});
+</script>
+
+</body>
+</html>
