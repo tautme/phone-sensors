@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hearing Range</title>
+<style>
+  :root {
+    --bg: #fbfbf8;
+    --ink: #1a1a1f;
+    --muted: #6a6a73;
+    --rule: #e5e3dc;
+    --accent: #b3261e;
+    --code-bg: #f0eee6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15151a;
+      --ink: #e8e6df;
+      --muted: #8e8e98;
+      --rule: #2a2a32;
+      --accent: #ff7a6e;
+      --code-bg: #1f1f26;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--ink); margin: 0; }
+  body {
+    font: 16px/1.4 ui-sans-serif, system-ui, sans-serif;
+    max-width: 560px; margin: 0 auto; padding: 1.2rem 1rem 3rem;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 .35rem; letter-spacing: -0.01em; }
+  p.lead { color: var(--muted); margin: 0 0 1rem; font-size: .92rem; }
+  .freq-display {
+    font: 700 3.6rem/1 ui-monospace, monospace;
+    text-align: center; margin: 1.2rem 0 .2rem;
+    letter-spacing: -0.03em;
+  }
+  .freq-display .unit { font-size: 1.1rem; color: var(--muted); margin-left: .35rem; font-weight: 400; }
+  .freq-bar {
+    height: 1.4rem; background: var(--code-bg);
+    border-radius: 4px; position: relative; margin: .6rem 0 .2rem;
+    overflow: hidden;
+  }
+  .freq-bar .pos {
+    position: absolute; top: 0; bottom: 0; width: 2px;
+    background: var(--accent);
+  }
+  .freq-bar .floor, .freq-bar .ceiling {
+    position: absolute; top: 0; bottom: 0; width: 2px;
+    background: var(--ink); opacity: .55;
+  }
+  .freq-bar .floor::after, .freq-bar .ceiling::after {
+    content: attr(data-label); position: absolute; top: 100%;
+    left: 50%; transform: translateX(-50%);
+    font: .65rem ui-monospace, monospace; color: var(--muted);
+    margin-top: 2px; white-space: nowrap;
+  }
+  .freq-bar-labels {
+    display: flex; justify-content: space-between;
+    font: .7rem ui-monospace, monospace; color: var(--muted);
+    margin: 1.2rem 0 1rem;
+  }
+  .controls {
+    display: grid; grid-template-columns: 1fr 1fr; gap: .5rem;
+    margin: .8rem 0;
+  }
+  button {
+    padding: .8rem 1rem;
+    background: var(--bg); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 4px;
+    font: 600 .9rem ui-sans-serif, system-ui, sans-serif;
+    cursor: pointer; touch-action: manipulation;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  button.active { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  button.small { padding: .45rem .8rem; font-size: .8rem; }
+  .row {
+    display: flex; align-items: center; gap: .6rem;
+    margin: .7rem 0; font-size: .85rem;
+  }
+  .row label { color: var(--muted); min-width: 4.2rem; }
+  .row input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
+  .row .val { font: ui-monospace, monospace; color: var(--ink); min-width: 4rem; text-align: right; }
+  .results {
+    background: var(--code-bg); border-radius: 4px;
+    padding: .7rem .9rem; margin: 1rem 0;
+    font: .85rem ui-monospace, monospace;
+  }
+  .results .label { color: var(--muted); display: inline-block; min-width: 6rem; }
+  .results .value { color: var(--ink); font-weight: 600; }
+  .results .row-r { margin: .15rem 0; }
+  footer {
+    margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--rule);
+    color: var(--muted); font-size: .8rem;
+  }
+  footer a { color: inherit; }
+  .warning {
+    background: var(--code-bg); border-left: 3px solid var(--accent);
+    padding: .55rem .8rem; font-size: .82rem; color: var(--muted);
+    border-radius: 0 4px 4px 0; margin: .8rem 0;
+  }
+  .preset-row { display: flex; gap: .35rem; flex-wrap: wrap; margin: .4rem 0 .8rem; }
+  .preset-row button { padding: .35rem .7rem; font-size: .78rem; flex: 0; }
+</style>
+</head>
+<body>
+
+<h1>Hearing Range</h1>
+<p class="lead">Find the lowest and highest frequencies you can actually hear. Pair with the <a href="mic-range.html">Mic Range</a> demo on a second phone to compare what the speakers emit vs. what mics receive.</p>
+
+<div class="warning">
+  <strong>Two tests in one.</strong> With headphones, this measures <em>your</em> hearing. Without, you're measuring whatever the phone speaker can produce — most attenuate hard below ~150 Hz and above ~17 kHz. Start with low volume and raise it.
+</div>
+
+<div class="freq-display">
+  <span id="freqVal">1000</span><span class="unit">Hz</span>
+</div>
+
+<div class="freq-bar">
+  <div class="floor" id="floorMark" data-label="floor" style="display:none"></div>
+  <div class="ceiling" id="ceilingMark" data-label="ceiling" style="display:none"></div>
+  <div class="pos" id="freqPos"></div>
+</div>
+<div class="freq-bar-labels">
+  <span>20</span><span>100</span><span>1k</span><span>10k</span><span>22k</span>
+</div>
+
+<div class="row">
+  <label>Frequency</label>
+  <input type="range" id="freq" min="0" max="1000" value="500">
+</div>
+<div class="preset-row">
+  <button data-freq="60">60 Hz</button>
+  <button data-freq="250">250</button>
+  <button data-freq="1000">1k</button>
+  <button data-freq="4000">4k</button>
+  <button data-freq="8000">8k</button>
+  <button data-freq="12000">12k</button>
+  <button data-freq="15000">15k</button>
+  <button data-freq="17000">17k</button>
+  <button data-freq="19000">19k</button>
+  <button data-freq="20000">20k</button>
+</div>
+<div class="row">
+  <label>Volume</label>
+  <input type="range" id="vol" min="0" max="100" value="20">
+  <span class="val" id="volVal">20%</span>
+</div>
+<div class="row">
+  <label>Wave</label>
+  <select id="wave" style="flex:1; padding:.4rem; background:var(--bg); color:var(--ink); border:1px solid var(--rule); border-radius:4px; font:inherit;">
+    <option value="sine">sine (cleanest)</option>
+    <option value="triangle">triangle</option>
+    <option value="square">square (rich harmonics)</option>
+    <option value="sawtooth">sawtooth</option>
+  </select>
+</div>
+
+<div class="controls">
+  <button id="play" class="primary">Play tone</button>
+  <button id="sweep">Sweep ↕</button>
+  <button id="markFloor">Mark floor (low)</button>
+  <button id="markCeiling">Mark ceiling (high)</button>
+</div>
+
+<div class="results">
+  <div class="row-r"><span class="label">Floor:</span> <span class="value" id="floorVal">—</span></div>
+  <div class="row-r"><span class="label">Ceiling:</span> <span class="value" id="ceilingVal">—</span></div>
+  <div class="row-r"><span class="label">Range:</span> <span class="value" id="rangeVal">—</span></div>
+  <button id="clear" class="small" style="margin-top: .5rem;">Clear marks</button>
+</div>
+
+<footer>
+  <p>Slider is logarithmic over 20 Hz – 22 kHz. Tone is generated with Web Audio <code>OscillatorNode</code>, ramped on/off to avoid clicks. Volume cap is 50% of full output regardless of slider, so cranking the slider to 100% won't blow speakers — but use sane volume anyway, especially below 60 Hz where energy can be felt before heard.</p>
+  <p><a href="index.html">← all demos</a> · <a href="mic-range.html">mic range tester →</a></p>
+</footer>
+
+<script>
+const FREQ_MIN = 20;
+const FREQ_MAX = 22000;
+const SLIDER_MAX = 1000;
+const VOL_CAP = 0.5;
+
+const $ = id => document.getElementById(id);
+const freqSlider = $('freq');
+const volSlider = $('vol');
+const volVal = $('volVal');
+const freqVal = $('freqVal');
+const freqPos = $('freqPos');
+const floorMark = $('floorMark');
+const ceilingMark = $('ceilingMark');
+const floorValEl = $('floorVal');
+const ceilingValEl = $('ceilingVal');
+const rangeValEl = $('rangeVal');
+const playBtn = $('play');
+const sweepBtn = $('sweep');
+const waveSel = $('wave');
+
+let ctx, osc, gain;
+let isPlaying = false;
+let isSweeping = false;
+let sweepStart = 0;
+let floor = null, ceiling = null;
+
+const sliderToFreq = s => FREQ_MIN * Math.pow(FREQ_MAX / FREQ_MIN, s / SLIDER_MAX);
+const freqToSlider = f => SLIDER_MAX * Math.log(f / FREQ_MIN) / Math.log(FREQ_MAX / FREQ_MIN);
+const freqToPercent = f => 100 * Math.log(f / FREQ_MIN) / Math.log(FREQ_MAX / FREQ_MIN);
+
+const fmtShort = f => f < 1000 ? f.toFixed(0) : (f / 1000).toFixed(2) + 'k';
+const fmtFull = f => f < 1000 ? f.toFixed(0) + ' Hz' : (f / 1000).toFixed(2) + ' kHz';
+
+function applyFreq() {
+  const f = sliderToFreq(parseFloat(freqSlider.value));
+  freqVal.textContent = fmtShort(f);
+  freqPos.style.left = freqToPercent(f) + '%';
+  if (osc) osc.frequency.setTargetAtTime(f, ctx.currentTime, 0.008);
+  return f;
+}
+
+function applyVolume() {
+  const v = parseFloat(volSlider.value) / 100;
+  volVal.textContent = volSlider.value + '%';
+  if (gain) gain.gain.setTargetAtTime(v * VOL_CAP, ctx.currentTime, 0.02);
+}
+
+freqSlider.addEventListener('input', applyFreq);
+volSlider.addEventListener('input', applyVolume);
+waveSel.addEventListener('change', () => { if (osc) osc.type = waveSel.value; });
+
+document.querySelectorAll('.preset-row button').forEach(b => {
+  b.addEventListener('click', () => {
+    freqSlider.value = freqToSlider(parseFloat(b.dataset.freq));
+    applyFreq();
+  });
+});
+
+async function start() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') await ctx.resume();
+  if (osc) return;
+  osc = ctx.createOscillator();
+  gain = ctx.createGain();
+  gain.gain.value = 0;
+  osc.type = waveSel.value;
+  osc.frequency.value = sliderToFreq(parseFloat(freqSlider.value));
+  osc.connect(gain).connect(ctx.destination);
+  osc.start();
+  const v = parseFloat(volSlider.value) / 100;
+  gain.gain.setTargetAtTime(v * VOL_CAP, ctx.currentTime, 0.03);
+  isPlaying = true;
+  playBtn.textContent = 'Stop';
+  playBtn.classList.add('active');
+  playBtn.classList.remove('primary');
+}
+
+function stop() {
+  if (!osc) return;
+  gain.gain.setTargetAtTime(0, ctx.currentTime, 0.03);
+  const o = osc, g = gain;
+  setTimeout(() => { try { o.stop(); o.disconnect(); g.disconnect(); } catch(e){} }, 120);
+  osc = null; gain = null;
+  isPlaying = false;
+  playBtn.textContent = 'Play tone';
+  playBtn.classList.remove('active');
+  playBtn.classList.add('primary');
+}
+
+playBtn.addEventListener('click', () => isPlaying ? stop() : start());
+
+sweepBtn.addEventListener('click', async () => {
+  if (isSweeping) {
+    isSweeping = false;
+    sweepBtn.classList.remove('active');
+    return;
+  }
+  if (!isPlaying) await start();
+  isSweeping = true;
+  sweepStart = performance.now();
+  sweepBtn.classList.add('active');
+  requestAnimationFrame(sweepTick);
+});
+
+function sweepTick(t) {
+  if (!isSweeping) return;
+  const elapsed = (t - sweepStart) / 1000;
+  const period = 24;
+  let phase = (elapsed % period) / period;
+  if (Math.floor(elapsed / period) % 2 === 1) phase = 1 - phase;
+  freqSlider.value = phase * SLIDER_MAX;
+  applyFreq();
+  requestAnimationFrame(sweepTick);
+}
+
+function updateRangeText() {
+  if (floor != null && ceiling != null) {
+    const oct = Math.log2(ceiling / floor);
+    rangeValEl.textContent = `${fmtFull(floor)} – ${fmtFull(ceiling)} (${oct.toFixed(1)} octaves)`;
+  } else if (floor != null) {
+    rangeValEl.textContent = `from ${fmtFull(floor)} (mark ceiling)`;
+  } else if (ceiling != null) {
+    rangeValEl.textContent = `up to ${fmtFull(ceiling)} (mark floor)`;
+  } else {
+    rangeValEl.textContent = '—';
+  }
+}
+
+$('markFloor').addEventListener('click', () => {
+  const f = sliderToFreq(parseFloat(freqSlider.value));
+  floor = f;
+  floorValEl.textContent = fmtFull(f);
+  floorMark.style.display = '';
+  floorMark.style.left = freqToPercent(f) + '%';
+  updateRangeText();
+});
+$('markCeiling').addEventListener('click', () => {
+  const f = sliderToFreq(parseFloat(freqSlider.value));
+  ceiling = f;
+  ceilingValEl.textContent = fmtFull(f);
+  ceilingMark.style.display = '';
+  ceilingMark.style.left = freqToPercent(f) + '%';
+  updateRangeText();
+});
+
+$('clear').addEventListener('click', () => {
+  floor = ceiling = null;
+  floorMark.style.display = 'none';
+  ceilingMark.style.display = 'none';
+  floorValEl.textContent = '—';
+  ceilingValEl.textContent = '—';
+  rangeValEl.textContent = '—';
+});
+
+applyFreq();
+</script>
+
+</body>
+</html>

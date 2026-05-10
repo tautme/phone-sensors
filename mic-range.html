@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mic Range</title>
+<style>
+  :root {
+    --bg: #fbfbf8;
+    --ink: #1a1a1f;
+    --muted: #6a6a73;
+    --rule: #e5e3dc;
+    --accent: #b3261e;
+    --code-bg: #f0eee6;
+    --grid: #d8d6cf;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15151a;
+      --ink: #e8e6df;
+      --muted: #8e8e98;
+      --rule: #2a2a32;
+      --accent: #ff7a6e;
+      --code-bg: #1f1f26;
+      --grid: #353540;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--ink); margin: 0; }
+  body {
+    font: 16px/1.4 ui-sans-serif, system-ui, sans-serif;
+    max-width: 620px; margin: 0 auto; padding: 1.2rem 1rem 3rem;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 .35rem; letter-spacing: -0.01em; }
+  p.lead { color: var(--muted); margin: 0 0 1rem; font-size: .92rem; }
+  .controls {
+    display: grid; grid-template-columns: 1fr 1fr; gap: .5rem;
+    margin: .8rem 0;
+  }
+  button {
+    padding: .8rem 1rem;
+    background: var(--bg); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 4px;
+    font: 600 .9rem ui-sans-serif, system-ui, sans-serif;
+    cursor: pointer; touch-action: manipulation;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  button.active { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  button:disabled { opacity: .4; cursor: default; }
+  .canvas-wrap {
+    position: relative; margin: .6rem 0 .2rem;
+    background: #000; border-radius: 4px; overflow: hidden;
+  }
+  canvas { display: block; width: 100%; }
+  .axis {
+    display: flex; justify-content: space-between;
+    font: .7rem ui-monospace, monospace; color: var(--muted);
+    margin: .15rem .15rem 1rem;
+  }
+  .canvas-wrap.curve { background: var(--code-bg); }
+  .results {
+    background: var(--code-bg); border-radius: 4px;
+    padding: .7rem .9rem; margin: 1rem 0;
+    font: .85rem ui-monospace, monospace;
+  }
+  .results .label { color: var(--muted); display: inline-block; min-width: 7rem; }
+  .results .value { color: var(--ink); font-weight: 600; }
+  .results .row-r { margin: .15rem 0; }
+  .legend {
+    display: flex; gap: 1rem; font-size: .78rem;
+    color: var(--muted); margin: .2rem 0 .2rem;
+    align-items: center; flex-wrap: wrap;
+  }
+  .legend .swatch {
+    display: inline-block; width: 1rem; height: 2px;
+    background: var(--accent); margin-right: .3rem;
+    vertical-align: middle;
+  }
+  .legend .swatch.dashed { background: transparent;
+    border-top: 2px dashed var(--ink); opacity: .55; }
+  .legend .swatch.solid-ink { background: var(--ink); opacity: .55; }
+  .warning {
+    background: var(--code-bg); border-left: 3px solid var(--accent);
+    padding: .55rem .8rem; font-size: .82rem; color: var(--muted);
+    border-radius: 0 4px 4px 0; margin: .8rem 0;
+  }
+  footer {
+    margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--rule);
+    color: var(--muted); font-size: .8rem;
+  }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+
+<h1>Mic Range</h1>
+<p class="lead">Live FFT spectrogram of what the phone's microphone hears, log-scaled from 20 Hz to Nyquist. Pair with the <a href="hearing-range.html">Hearing Range</a> demo on a second phone to see what the speakers actually emit at each frequency.</p>
+
+<div class="warning">
+  <strong>Browser audio filters off.</strong> This page disables echo cancellation, noise suppression, and AGC on the mic stream. Without that, the browser would silently kill the very signals we want to see (low rumble, ultrasonics, narrow tones) before they reach the FFT.
+</div>
+
+<div class="controls">
+  <button id="start" class="primary">Start mic</button>
+  <button id="baseline">Capture noise floor</button>
+  <button id="reset">Clear max-hold</button>
+  <button id="stop" disabled>Stop</button>
+</div>
+
+<div class="canvas-wrap">
+  <canvas id="waterfall" width="600" height="280"></canvas>
+</div>
+<div class="axis"><span>20</span><span>100</span><span>1k</span><span>10k</span><span id="nyqLabel">22k</span></div>
+
+<div class="canvas-wrap curve">
+  <canvas id="response" width="600" height="160"></canvas>
+</div>
+<div class="legend">
+  <span><span class="swatch"></span>max-hold (best response per bin)</span>
+  <span><span class="swatch dashed"></span>noise floor baseline</span>
+</div>
+
+<div class="results">
+  <div class="row-r"><span class="label">Peak now:</span> <span class="value" id="peakVal">—</span></div>
+  <div class="row-r"><span class="label">Best detected:</span> <span class="value" id="bestVal">—</span></div>
+  <div class="row-r"><span class="label">Sample rate:</span> <span class="value" id="srVal">—</span></div>
+  <div class="row-r"><span class="label">FFT size / bins:</span> <span class="value" id="binsVal">—</span></div>
+</div>
+
+<footer>
+  <p>Spectrogram scrolls top-to-bottom: newest data at the top. Frequency axis is logarithmic so low and high octaves get equal screen real estate. The response curve below the spectrogram tracks the highest magnitude seen at each frequency bin since the last reset; subtract the dashed baseline to see how much the mic actually picked up above its own noise floor.</p>
+  <p>Most phone mics roll off above ~16–18 kHz and below ~80 Hz, but cheap MEMS mics on flagship phones can surprise you in either direction. Sample rate is whatever the OS hands the browser, typically 44.1 or 48 kHz — Nyquist is half that.</p>
+  <p><a href="index.html">← all demos</a> · <a href="hearing-range.html">← hearing range tester</a></p>
+</footer>
+
+<script>
+const FREQ_MIN = 20;
+const FFT_SIZE = 4096;
+const HISTORY_DB = -120;
+
+const $ = id => document.getElementById(id);
+const startBtn = $('start');
+const stopBtn = $('stop');
+const baselineBtn = $('baseline');
+const resetBtn = $('reset');
+const wf = $('waterfall');
+const wfCtx = wf.getContext('2d', { willReadFrequently: true });
+const resp = $('response');
+const respCtx = resp.getContext('2d');
+
+let ctx, analyser, source, stream;
+let freqData;
+let running = false;
+let baselineDb = null;
+let maxHoldDb = null;
+let bestPeakHz = 0, bestPeakDb = -Infinity;
+let nyq = 22050;
+
+const fmtShort = f => f < 1000 ? f.toFixed(0) : (f / 1000).toFixed(2) + 'k';
+const fmtFull = f => f < 1000 ? f.toFixed(0) + ' Hz' : (f / 1000).toFixed(2) + ' kHz';
+
+function logFreqAt(t, fmin, fmax) {
+  return fmin * Math.pow(fmax / fmin, t);
+}
+
+// inferno-ish: dark → red → orange → yellow → white
+function colormap(t) {
+  t = Math.max(0, Math.min(1, t));
+  if (t < 0.20) { const k = t / 0.20; return [k * 50, 0, k * 70]; }
+  if (t < 0.45) { const k = (t - 0.20) / 0.25; return [50 + k * 150, 0, 70 - k * 70]; }
+  if (t < 0.70) { const k = (t - 0.45) / 0.25; return [200 + k * 55, k * 140, 0]; }
+  if (t < 0.90) { const k = (t - 0.70) / 0.20; return [255, 140 + k * 100, k * 80]; }
+  const k = (t - 0.90) / 0.10; return [255, 240 + k * 15, 80 + k * 175];
+}
+
+async function start() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 1
+      }
+    });
+  } catch (e) {
+    alert('Mic permission denied or unavailable: ' + e.message);
+    return;
+  }
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') await ctx.resume();
+  source = ctx.createMediaStreamSource(stream);
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = FFT_SIZE;
+  analyser.smoothingTimeConstant = 0;
+  analyser.minDecibels = HISTORY_DB;
+  analyser.maxDecibels = -10;
+  source.connect(analyser);
+
+  freqData = new Float32Array(analyser.frequencyBinCount);
+  maxHoldDb = new Float32Array(analyser.frequencyBinCount).fill(-Infinity);
+  baselineDb = null;
+  nyq = ctx.sampleRate / 2;
+
+  $('srVal').textContent = ctx.sampleRate.toFixed(0) + ' Hz (Nyquist ' + (nyq/1000).toFixed(1) + ' kHz)';
+  $('binsVal').textContent = FFT_SIZE + ' / ' + analyser.frequencyBinCount + ' (' + (ctx.sampleRate / FFT_SIZE).toFixed(1) + ' Hz per bin)';
+  $('nyqLabel').textContent = (nyq / 1000).toFixed(0) + 'k';
+
+  // clear canvases
+  wfCtx.fillStyle = '#000';
+  wfCtx.fillRect(0, 0, wf.width, wf.height);
+  drawResponse();
+
+  running = true;
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+  startBtn.classList.remove('primary');
+  startBtn.classList.add('active');
+  startBtn.textContent = 'Listening…';
+  requestAnimationFrame(tick);
+}
+
+function stop() {
+  running = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  if (source) source.disconnect();
+  if (ctx) ctx.close();
+  ctx = source = analyser = stream = null;
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+  startBtn.classList.add('primary');
+  startBtn.classList.remove('active');
+  startBtn.textContent = 'Start mic';
+}
+
+function tick() {
+  if (!running) return;
+  analyser.getFloatFrequencyData(freqData);
+
+  // update max-hold and find peak this frame
+  let peakBin = 1, peakVal = -Infinity;
+  for (let i = 1; i < freqData.length; i++) {
+    if (freqData[i] > maxHoldDb[i]) maxHoldDb[i] = freqData[i];
+    if (freqData[i] > peakVal) { peakVal = freqData[i]; peakBin = i; }
+  }
+  const peakHz = peakBin * ctx.sampleRate / FFT_SIZE;
+  $('peakVal').textContent = peakVal > -90
+    ? `${fmtFull(peakHz)} @ ${peakVal.toFixed(0)} dB`
+    : '— (silence)';
+
+  // best-ever peak (for "highest frequency the mic responded to" stat)
+  if (peakVal > -70 && peakHz > bestPeakHz) {
+    bestPeakHz = peakHz; bestPeakDb = peakVal;
+  }
+  if (bestPeakHz > 0) {
+    $('bestVal').textContent = `${fmtFull(bestPeakHz)} @ ${bestPeakDb.toFixed(0)} dB`;
+  }
+
+  drawWaterfallRow();
+  drawResponse();
+
+  requestAnimationFrame(tick);
+}
+
+function drawWaterfallRow() {
+  // shift down by 1 (newest at top)
+  wfCtx.drawImage(wf, 0, 0, wf.width, wf.height - 1, 0, 1, wf.width, wf.height - 1);
+  const row = wfCtx.createImageData(wf.width, 1);
+  for (let x = 0; x < wf.width; x++) {
+    const t = x / (wf.width - 1);
+    const f = logFreqAt(t, FREQ_MIN, nyq);
+    const bin = Math.round(f * FFT_SIZE / ctx.sampleRate);
+    if (bin <= 0 || bin >= freqData.length) continue;
+    const dB = freqData[bin];
+    const norm = (dB - HISTORY_DB) / (-10 - HISTORY_DB); // 0..1
+    const [r, g, b] = colormap(norm);
+    const i = x * 4;
+    row.data[i] = r; row.data[i+1] = g; row.data[i+2] = b; row.data[i+3] = 255;
+  }
+  wfCtx.putImageData(row, 0, 0);
+}
+
+function drawResponse() {
+  const w = resp.width, h = resp.height;
+  // background
+  const bgCol = getCss('--code-bg');
+  respCtx.fillStyle = bgCol;
+  respCtx.fillRect(0, 0, w, h);
+
+  // grid lines at decade markers + dB markers
+  respCtx.strokeStyle = getCss('--grid');
+  respCtx.lineWidth = 1;
+  respCtx.setLineDash([2, 4]);
+  respCtx.font = '10px ui-monospace, monospace';
+  respCtx.fillStyle = getCss('--muted');
+  for (const f of [100, 1000, 10000]) {
+    if (f > nyq) continue;
+    const t = Math.log(f / FREQ_MIN) / Math.log(nyq / FREQ_MIN);
+    const x = t * w;
+    respCtx.beginPath();
+    respCtx.moveTo(x, 0); respCtx.lineTo(x, h);
+    respCtx.stroke();
+  }
+  for (const dB of [-30, -60, -90]) {
+    const y = h * (dB - (-10)) / (HISTORY_DB - (-10));
+    respCtx.beginPath();
+    respCtx.moveTo(0, y); respCtx.lineTo(w, y);
+    respCtx.stroke();
+    respCtx.fillText(dB + ' dB', 4, y - 2);
+  }
+  respCtx.setLineDash([]);
+
+  if (!analyser) return;
+
+  // baseline (dashed, ink color, faded)
+  if (baselineDb) {
+    respCtx.strokeStyle = getCss('--ink');
+    respCtx.globalAlpha = 0.55;
+    respCtx.setLineDash([4, 3]);
+    respCtx.lineWidth = 1.2;
+    drawCurve(baselineDb);
+    respCtx.globalAlpha = 1;
+    respCtx.setLineDash([]);
+  }
+
+  // max-hold (solid accent)
+  respCtx.strokeStyle = getCss('--accent');
+  respCtx.lineWidth = 1.6;
+  drawCurve(maxHoldDb);
+}
+
+function drawCurve(arr) {
+  const w = resp.width, h = resp.height;
+  respCtx.beginPath();
+  let started = false;
+  for (let x = 0; x < w; x++) {
+    const t = x / (w - 1);
+    const f = logFreqAt(t, FREQ_MIN, nyq);
+    const bin = Math.round(f * FFT_SIZE / ctx.sampleRate);
+    if (bin <= 0 || bin >= arr.length) continue;
+    const dB = arr[bin];
+    if (!isFinite(dB)) continue;
+    const y = h * (dB - (-10)) / (HISTORY_DB - (-10));
+    if (!started) { respCtx.moveTo(x, y); started = true; }
+    else respCtx.lineTo(x, y);
+  }
+  respCtx.stroke();
+}
+
+function getCss(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
+}
+
+baselineBtn.addEventListener('click', async () => {
+  if (!analyser) { alert('Start the mic first.'); return; }
+  baselineBtn.classList.add('active');
+  baselineBtn.textContent = 'Capturing…';
+  // average ~1.2 sec
+  const acc = new Float32Array(analyser.frequencyBinCount);
+  const tmp = new Float32Array(analyser.frequencyBinCount);
+  let n = 0;
+  const t0 = performance.now();
+  await new Promise(res => {
+    function step() {
+      if (!running) return res();
+      analyser.getFloatFrequencyData(tmp);
+      for (let i = 0; i < tmp.length; i++) {
+        if (isFinite(tmp[i])) acc[i] += tmp[i];
+      }
+      n++;
+      if (performance.now() - t0 > 1200) return res();
+      requestAnimationFrame(step);
+    }
+    step();
+  });
+  baselineDb = new Float32Array(analyser.frequencyBinCount);
+  for (let i = 0; i < acc.length; i++) baselineDb[i] = acc[i] / Math.max(1, n);
+  baselineBtn.classList.remove('active');
+  baselineBtn.textContent = 'Recapture noise floor';
+});
+
+resetBtn.addEventListener('click', () => {
+  if (!maxHoldDb) return;
+  maxHoldDb.fill(-Infinity);
+  bestPeakHz = 0; bestPeakDb = -Infinity;
+  $('bestVal').textContent = '—';
+});
+
+startBtn.addEventListener('click', start);
+stopBtn.addEventListener('click', stop);
+
+// resize canvases for sharpness
+function resizeCanvases() {
+  for (const c of [wf, resp]) {
+    const ratio = window.devicePixelRatio || 1;
+    const cssW = c.clientWidth;
+    if (!cssW) continue;
+    const newW = Math.floor(cssW * ratio);
+    const newH = c.height;
+    if (c.width !== newW) {
+      c.width = newW;
+    }
+  }
+  drawResponse();
+}
+window.addEventListener('resize', resizeCanvases);
+window.addEventListener('load', resizeCanvases);
+</script>
+
+</body>
+</html>

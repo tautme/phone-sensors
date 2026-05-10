@@ -32,6 +32,17 @@ The result is a small map of where the boundaries of the modern web platform act
 | `bluetooth-reader.html` | Bluetooth LE | Connects to BLE devices and reads live sensor data |
 | `connection-health.html` | Network | Pings + speed tests over time, with charts |
 | `sensor-etch.html` | Everything | Painting + synthesized violin driven by all sensors |
+| `sensor_etch_pixel.html` | Everything | Sensor Etch in artist mode — pixel canvas variant |
+| `guitar-tuner.html` | Microphone | Pitch detector with a waterfall and a tuned-in confirmation |
+| `accel-tuner.html` | Accelerometer | Tune a guitar by pressing the phone to its body and reading vibration |
+| `ocr-vision.html` | Camera + OCR | Book-spine OCR with a side-by-side comparison view |
+| `ocr_vision_count.html` | Camera + OCR | Multi-spine OCR with a running count |
+| `ocr-spine-select.html` | Camera + OCR | Multi-spine OCR with manual region selection |
+| `qa_llm.html` | In-browser LLM | Document Q&A with citation jumps, model runs locally |
+| `hearing-range.html` | Speaker | Log-scale tone generator (20 Hz–22 kHz), sweep + mark floor/ceiling |
+| `mic-range.html` | Microphone | Live FFT waterfall + max-hold response curve, AGC/NS/EC disabled |
+| `product_tour.html` | — | Walkthrough of how Sensor Etch works |
+| `tech_tour.html` | — | Tour of the underlying electronics and music |
 | `index.html` | — | Showcase landing page |
 
 ## What's reachable, what isn't
