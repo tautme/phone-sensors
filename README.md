@@ -41,6 +41,8 @@ The result is a small map of where the boundaries of the modern web platform act
 | `qa_llm.html` | In-browser LLM | Document Q&A with citation jumps, model runs locally |
 | `hearing-range.html` | Speaker | Log-scale tone generator (20 Hz–22 kHz), sweep + mark floor/ceiling |
 | `mic-range.html` | Microphone | Live FFT waterfall + max-hold response curve, AGC/NS/EC disabled |
+| `echolocation.html` | Speaker + mic | Chirp + cross-correlation, distance to walls from echo time-of-flight |
+| `gait-fingerprint.html` | Accelerometer | Walk for 30 s; step pattern becomes a saveable, comparable fingerprint |
 | `product_tour.html` | — | Walkthrough of how Sensor Etch works |
 | `tech_tour.html` | — | Tour of the underlying electronics and music |
 | `index.html` | — | Showcase landing page |
