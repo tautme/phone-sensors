@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Pulse · BPM</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,700&family=JetBrains+Mono:wght@300;500&display=swap');
+
+:root {
+–bg: #1a0a0e;
+–ink: #f5e6d3;
+–pulse: #ff3b5c;
+–pulse-dim: #8a1f30;
+–rule: #2d1419;
+–dim: #6b4750;
+}
+
+- { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+background: var(–bg);
+color: var(–ink);
+font-family: ‘JetBrains Mono’, monospace;
+min-height: 100vh;
+overflow-x: hidden;
+}
+
+body {
+background-image:
+radial-gradient(ellipse at top, rgba(255,59,92,0.08), transparent 60%),
+radial-gradient(ellipse at bottom, rgba(255,59,92,0.04), transparent 50%);
+padding: 30px 24px 50px;
+}
+
+header {
+text-align: center;
+margin-bottom: 40px;
+}
+
+.title {
+font-family: ‘Fraunces’, serif;
+font-weight: 300;
+font-style: italic;
+font-size: 2.4rem;
+letter-spacing: -0.02em;
+margin-bottom: 4px;
+}
+
+.subtitle {
+font-size: 0.7rem;
+letter-spacing: 0.3em;
+color: var(–dim);
+text-transform: uppercase;
+}
+
+.heart-display {
+text-align: center;
+margin-bottom: 30px;
+position: relative;
+}
+
+.heart {
+font-size: 4rem;
+color: var(–pulse-dim);
+display: inline-block;
+transition: transform 0.1s, color 0.1s;
+}
+
+.heart.beat {
+transform: scale(1.3);
+color: var(–pulse);
+filter: drop-shadow(0 0 20px var(–pulse));
+}
+
+.bpm-row {
+display: flex;
+align-items: baseline;
+justify-content: center;
+gap: 12px;
+margin-top: 16px;
+}
+
+.bpm {
+font-family: ‘Fraunces’, serif;
+font-weight: 300;
+font-size: 5rem;
+line-height: 1;
+letter-spacing: -0.04em;
+}
+
+.bpm-unit {
+font-size: 0.75rem;
+letter-spacing: 0.3em;
+color: var(–dim);
+text-transform: uppercase;
+}
+
+.confidence {
+text-align: center;
+font-size: 0.7rem;
+letter-spacing: 0.2em;
+color: var(–dim);
+text-transform: uppercase;
+margin-top: 6px;
+}
+
+.waveform {
+height: 140px;
+border-top: 1px solid var(–rule);
+border-bottom: 1px solid var(–rule);
+margin-bottom: 24px;
+position: relative;
+overflow: hidden;
+}
+
+#waveCanvas {
+width: 100%;
+height: 100%;
+display: block;
+}
+
+.video-wrap {
+width: 80px;
+height: 80px;
+border-radius: 50%;
+overflow: hidden;
+margin: 0 auto 24px;
+border: 2px solid var(–rule);
+position: relative;
+display: none;
+}
+
+.video-wrap.active {
+display: block;
+border-color: var(–pulse);
+}
+
+#video {
+width: 100%;
+height: 100%;
+object-fit: cover;
+}
+
+.instructions {
+border: 1px solid var(–rule);
+padding: 20px;
+margin-bottom: 24px;
+font-size: 0.85rem;
+line-height: 1.7;
+color: var(–ink);
+position: relative;
+}
+
+.instructions::before {
+content: ‘HOW’;
+position: absolute;
+top: -8px;
+left: 16px;
+background: var(–bg);
+padding: 0 8px;
+font-size: 0.6rem;
+letter-spacing: 0.3em;
+color: var(–dim);
+}
+
+.instructions ol {
+padding-left: 20px;
+}
+
+.instructions li {
+margin-bottom: 6px;
+}
+
+button {
+width: 100%;
+background: var(–pulse);
+color: var(–bg);
+border: none;
+padding: 20px;
+font-family: ‘Fraunces’, serif;
+font-weight: 400;
+font-style: italic;
+font-size: 1.1rem;
+cursor: pointer;
+margin-bottom: 12px;
+transition: all 0.2s;
+letter-spacing: 0.05em;
+}
+
+button:active {
+transform: scale(0.98);
+}
+
+button.secondary {
+background: transparent;
+color: var(–ink);
+border: 1px solid var(–rule);
+}
+
+button:disabled {
+opacity: 0.3;
+cursor: not-allowed;
+}
+
+.status {
+text-align: center;
+font-size: 0.7rem;
+letter-spacing: 0.2em;
+color: var(–dim);
+text-transform: uppercase;
+margin-top: 16px;
+min-height: 1em;
+}
+</style>
+
+</head>
+<body>
+  <header>
+    <div class="title">pulse</div>
+    <div class="subtitle">— optical heart rate —</div>
+  </header>
+
+  <div class="video-wrap" id="videoWrap">
+    <video id="video" autoplay playsinline muted></video>
+  </div>
+
+  <div class="heart-display">
+    <div class="heart" id="heart">♥</div>
+    <div class="bpm-row">
+      <div class="bpm" id="bpm">—</div>
+      <div class="bpm-unit">bpm</div>
+    </div>
+    <div class="confidence" id="confidence">place finger on rear camera</div>
+  </div>
+
+  <div class="waveform">
+    <canvas id="waveCanvas"></canvas>
+  </div>
+
+  <div class="instructions">
+    <ol>
+      <li>Press start, allow camera access</li>
+      <li>Gently cover the rear camera <em>and</em> flash with your fingertip</li>
+      <li>Stay still — first reading takes ~15 seconds</li>
+      <li>The flash will turn on automatically</li>
+    </ol>
+  </div>
+
+<button id="startBtn">begin measurement</button>
+<button class="secondary" id="stopBtn" disabled>stop</button>
+
+  <div class="status" id="status">ready</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const video = $('video');
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const waveCanvas = $('waveCanvas');
+  const waveCtx = waveCanvas.getContext('2d');
+
+  let stream = null;
+  let track = null;
+  let running = false;
+  let rafId = null;
+  let samples = []; // {t, v}
+  let bpmHistory = [];
+  let lastBeatTime = 0;
+
+  const FS_TARGET = 30; // sampling rate hz
+  const WINDOW_SEC = 10;
+  const MIN_BPM = 40;
+  const MAX_BPM = 200;
+
+  const setStatus = (s) => $('status').textContent = s;
+
+  const sizeWave = () => {
+    waveCanvas.width = waveCanvas.offsetWidth * devicePixelRatio;
+    waveCanvas.height = waveCanvas.offsetHeight * devicePixelRatio;
+  };
+  sizeWave();
+  window.addEventListener('resize', sizeWave);
+
+  const drawWave = () => {
+    const w = waveCanvas.width;
+    const h = waveCanvas.height;
+    waveCtx.clearRect(0, 0, w, h);
+
+    if (samples.length < 2) return;
+
+    const now = performance.now();
+    const visible = samples.filter(s => now - s.t < WINDOW_SEC * 1000);
+    if (visible.length < 2) return;
+
+    const values = visible.map(s => s.v);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = (max - min) || 1;
+
+    waveCtx.strokeStyle = '#ff3b5c';
+    waveCtx.lineWidth = 2 * devicePixelRatio;
+    waveCtx.beginPath();
+
+    visible.forEach((s, i) => {
+      const x = (i / (visible.length - 1)) * w;
+      // invert because red channel DROPS at systole
+      const norm = (s.v - min) / range;
+      const y = h - norm * h * 0.85 - h * 0.075;
+      if (i === 0) waveCtx.moveTo(x, y);
+      else waveCtx.lineTo(x, y);
+    });
+    waveCtx.stroke();
+
+    // glow
+    waveCtx.strokeStyle = 'rgba(255,59,92,0.25)';
+    waveCtx.lineWidth = 6 * devicePixelRatio;
+    waveCtx.stroke();
+  };
+
+  // Simple moving-average detrend, then peak detection
+  const computeBPM = () => {
+    const now = performance.now();
+    const recent = samples.filter(s => now - s.t < WINDOW_SEC * 1000);
+    if (recent.length < FS_TARGET * 4) return null;
+
+    // Detrend with sliding mean
+    const winSize = Math.floor(FS_TARGET * 1.0);
+    const detrended = recent.map((s, i) => {
+      const lo = Math.max(0, i - winSize);
+      const hi = Math.min(recent.length, i + winSize);
+      let sum = 0;
+      for (let j = lo; j < hi; j++) sum += recent[j].v;
+      const mean = sum / (hi - lo);
+      return { t: s.t, v: -(s.v - mean) }; // flip: heartbeat is a drop in red
+    });
+
+    // Find peaks
+    const peaks = [];
+    const minDistMs = 60000 / MAX_BPM;
+    for (let i = 2; i < detrended.length - 2; i++) {
+      const v = detrended[i].v;
+      if (v > detrended[i-1].v && v > detrended[i-2].v &&
+          v > detrended[i+1].v && v > detrended[i+2].v && v > 0) {
+        if (peaks.length === 0 || detrended[i].t - peaks[peaks.length-1].t > minDistMs) {
+          peaks.push(detrended[i]);
+        }
+      }
+    }
+
+    if (peaks.length < 3) return null;
+
+    // Intervals
+    const intervals = [];
+    for (let i = 1; i < peaks.length; i++) {
+      intervals.push(peaks[i].t - peaks[i-1].t);
+    }
+    intervals.sort((a, b) => a - b);
+    const median = intervals[Math.floor(intervals.length / 2)];
+    const bpm = 60000 / median;
+
+    if (bpm < MIN_BPM || bpm > MAX_BPM) return null;
+
+    // Beat animation timing
+    const lastPeak = peaks[peaks.length - 1];
+    if (lastPeak.t > lastBeatTime + minDistMs * 0.8) {
+      lastBeatTime = lastPeak.t;
+      $('heart').classList.add('beat');
+      setTimeout(() => $('heart').classList.remove('beat'), 150);
+    }
+
+    return { bpm, confidence: Math.min(peaks.length / 8, 1) };
+  };
+
+  const sample = () => {
+    if (!running) return;
+
+    canvas.width = 60;
+    canvas.height = 60;
+    ctx.drawImage(video, 0, 0, 60, 60);
+    const data = ctx.getImageData(20, 20, 20, 20).data;
+
+    let r = 0, g = 0, b = 0, count = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      r += data[i];
+      g += data[i+1];
+      b += data[i+2];
+      count++;
+    }
+    r /= count; g /= count; b /= count;
+
+    // Check finger coverage: red should dominate
+    const fingerOk = r > 100 && r > g * 1.3 && r > b * 1.3;
+
+    if (fingerOk) {
+      samples.push({ t: performance.now(), v: r });
+      // trim
+      const now = performance.now();
+      samples = samples.filter(s => now - s.t < WINDOW_SEC * 1000);
+
+      const result = computeBPM();
+      if (result) {
+        bpmHistory.push(result.bpm);
+        if (bpmHistory.length > 5) bpmHistory.shift();
+        const avg = bpmHistory.reduce((a, b) => a + b, 0) / bpmHistory.length;
+        $('bpm').textContent = Math.round(avg);
+        $('confidence').textContent = result.confidence > 0.7
+          ? '— strong signal —'
+          : '— stabilizing —';
+      } else {
+        $('confidence').textContent = '— gathering... —';
+      }
+      drawWave();
+    } else {
+      $('bpm').textContent = '—';
+      $('confidence').textContent = 'cover camera + flash with finger';
+      // Clear stale samples when finger lifted
+      if (samples.length > 0 && performance.now() - samples[samples.length-1].t > 500) {
+        samples = [];
+        bpmHistory = [];
+      }
+    }
+
+    rafId = requestAnimationFrame(sample);
+  };
+
+  const start = async () => {
+    try {
+      setStatus('requesting camera...');
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { exact: 'environment' },
+          width: { ideal: 640 },
+          height: { ideal: 480 }
+        }
+      }).catch(async () => {
+        // Fallback to any camera
+        return navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      });
+
+      video.srcObject = stream;
+      track = stream.getVideoTracks()[0];
+
+      // Try to enable torch
+      try {
+        const caps = track.getCapabilities();
+        if (caps.torch) {
+          await track.applyConstraints({ advanced: [{ torch: true }] });
+          setStatus('flash on — place finger over camera');
+        } else {
+          setStatus('flash unavailable — bright room may help');
+        }
+      } catch (e) {
+        setStatus('flash control denied');
+      }
+
+      $('videoWrap').classList.add('active');
+      $('startBtn').disabled = true;
+      $('stopBtn').disabled = false;
+      running = true;
+      samples = [];
+      bpmHistory = [];
+
+      await video.play();
+      sample();
+
+    } catch (e) {
+      setStatus('camera access denied: ' + e.message);
+      alert('Need camera access. ' + e.message);
+    }
+  };
+
+  const stop = async () => {
+    running = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    if (track) {
+      try { await track.applyConstraints({ advanced: [{ torch: false }] }); } catch (e) {}
+    }
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    $('videoWrap').classList.remove('active');
+    $('startBtn').disabled = false;
+    $('stopBtn').disabled = true;
+    setStatus('stopped');
+    $('confidence').textContent = 'press begin to measure again';
+  };
+
+  $('startBtn').addEventListener('click', start);
+  $('stopBtn').addEventListener('click', stop);
+})();
+</script>
+
+</body>
+</html>
