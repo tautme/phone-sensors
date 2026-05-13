@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Morse Audio Transmitter</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 2rem auto;
+         padding: 0 1rem; background: #0a0a0d; color: #e6e6ea; line-height: 1.5; }
+  h1 { font-size: 1.4rem; margin: 0 0 .3rem; }
+  h2 { font-size: .85rem; text-transform: uppercase; letter-spacing: .08em;
+       color: #6a6a7a; margin: 1.1rem 0 .4rem; }
+  textarea, input[type=text], input[type=password] {
+    width: 100%; padding: .55rem; font-size: 1rem; border-radius: 6px;
+    background: #1a1a22; color: #e6e6ea; border: 1px solid #2d2d3d;
+    font-family: inherit; }
+  textarea { resize: vertical; min-height: 80px; }
+  .row { display: flex; gap: .5rem; margin: .5rem 0; flex-wrap: wrap; align-items: center; }
+  button { padding: .5rem 1rem; font-size: .95rem; cursor: pointer; border-radius: 6px;
+           background: #1a1a22; color: #e6e6ea; border: 1px solid #2d2d3d; }
+  button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  button.danger  { background: #b3261e; border-color: #b3261e; color: #fff; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.small { padding: .25rem .55rem; font-size: .8rem; }
+  label { font-size: .88rem; color: #a8a8b8; }
+  input[type=range] { width: 130px; vertical-align: middle; }
+  .val { font-family: ui-monospace, monospace; font-size: .82rem;
+         color: #ffd93d; min-width: 3.5em; display: inline-block; }
+  #status { font-family: ui-monospace, monospace; font-size: .85rem;
+            color: #ffd93d; min-height: 1.3em; }
+  #symbols { font-family: ui-monospace, monospace; font-size: 1.3rem;
+             letter-spacing: 3px; color: #4ecdc4; min-height: 1.6em; }
+  #encoded-display { font-family: ui-monospace, monospace; font-size: .78rem;
+                     color: #888; word-break: break-all; line-height: 1.5;
+                     background: #1a1a22; border: 1px solid #2d2d3d;
+                     border-radius: 4px; padding: .45rem .6rem; min-height: 2em; }
+  .vis { display: flex; align-items: center; gap: .4rem; margin: .3rem 0; }
+  .dot-ind { width: 12px; height: 12px; border-radius: 50%; background: #222;
+             transition: background .04s; flex-shrink: 0; }
+  .dot-ind.on { background: #ffd93d; box-shadow: 0 0 10px #ffd93d88; }
+  .pill { padding: 2px 8px; border-radius: 999px; font-size: .72rem;
+          background: #1a1a22; border: 1px solid #2d2d3d; font-family: ui-monospace, monospace; }
+  .pill.on { background: #16a34a; border-color: #16a34a; color: #fff; }
+  .pill.warn { background: #b3261e; border-color: #b3261e; color: #fff; }
+  small { color: #6a6a7a; }
+  details summary { cursor: pointer; font-size: .85rem; color: #6a6a7a;
+                    user-select: none; margin: .8rem 0 .4rem; }
+  .enc-note { font-size: .78rem; color: #6a6a7a; margin-top: .3rem; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<h1>Morse Audio Transmitter</h1>
+<p><small>Sends text as Morse code audio. Optional Vigenère cipher encryption. Pair with the Morse Listener to receive.</small></p>
+
+<h2>Message</h2>
+<textarea id="msg" placeholder="type your message…">HELLO WORLD</textarea>
+
+<h2>Encryption (optional)</h2>
+<div class="row">
+  <input type="password" id="key" placeholder="encryption key (leave blank for none)" style="flex:1">
+  <button class="small" id="showKey" type="button">show</button>
+</div>
+<div id="encoded-display">—</div>
+<div class="enc-note">Vigenère cipher. Key shifts each letter by the key character's alphabet position. Receiver needs the same key. Numbers and punctuation pass through unchanged.</div>
+
+<h2>Tone</h2>
+<div class="row">
+  <label>frequency</label>
+  <input id="freq" type="range" min="200" max="2000" step="10" value="700">
+  <span class="val" id="freqVal">700 Hz</span>
+</div>
+<div class="row">
+  <label>waveform</label>
+  <select id="wave" style="background:#1a1a22;color:#e6e6ea;border:1px solid #2d2d3d;border-radius:4px;padding:.3rem .5rem">
+    <option value="sine" selected>sine (pure)</option>
+    <option value="square">square (buzzy)</option>
+    <option value="triangle">triangle (mellow)</option>
+    <option value="sawtooth">sawtooth (bright)</option>
+  </select>
+</div>
+<div class="row">
+  <label>volume</label>
+  <input id="vol" type="range" min="0" max="1" step="0.05" value="0.7">
+  <span class="val" id="volVal">70%</span>
+</div>
+<div class="row">
+  <label>speed (WPM)</label>
+  <input id="wpm" type="range" min="5" max="30" value="12">
+  <span class="val" id="wpmVal">12</span>
+</div>
+
+<h2>Transmit</h2>
+<div class="row">
+  <button id="send" class="primary">Send</button>
+  <button id="stop" class="danger" disabled>Stop</button>
+  <span class="dot-ind" id="dot"></span>
+  <span id="enc-pill" class="pill">no encryption</span>
+</div>
+<div id="status">ready</div>
+<div id="symbols">&nbsp;</div>
+
+<details>
+  <summary>How encryption works</summary>
+  <p style="font-size:.82rem;color:#a8a8b8;margin-top:.4rem;line-height:1.6">
+    <b>Vigenère cipher:</b> the key is repeated over the message. Each letter is shifted by the corresponding key letter's position (A=0, B=1, … Z=25). So with key "KEY" and message "HELLO": H+K=R, E+E=I, L+Y=J, L+K=V, O+E=S → "RIJVS". The receiver decodes by shifting back using the same key. This is a classical cipher — not cryptographically strong, but it obscures the message without special software on either end. Both sender and receiver just need to agree on the key beforehand.
+  </p>
+</details>
+
+<script>
+const $ = id => document.getElementById(id);
+const MORSE = {
+  A:'.-', B:'-...', C:'-.-.', D:'-..', E:'.', F:'..-.', G:'--.', H:'....', I:'..',
+  J:'.---', K:'-.-', L:'.-..', M:'--', N:'-.', O:'---', P:'.--.', Q:'--.-',
+  R:'.-.', S:'...', T:'-', U:'..-', V:'...-', W:'.--', X:'-..-', Y:'-.--', Z:'--..',
+  '0':'-----','1':'.----','2':'..---','3':'...--','4':'....-','5':'.....',
+  '6':'-....','7':'--...','8':'---..','9':'----.',
+  '.':'.-.-.-',',':'--..--','?':'..--..',  "'":'.----.',  '!':'-.-.--',
+  '/':'-..-.', '(':'-.--.', ')':'-.--.-', '&':'.-...', ':':'---...',
+  '=':'-...-', '+':'.-.-.', '-':'-....-', '_':'..--.-'
+};
+
+// ===== sliders =====
+const sliders = [
+  ['freq','freqVal', v => v + ' Hz'],
+  ['vol', 'volVal',  v => Math.round(v*100) + '%'],
+  ['wpm', 'wpmVal',  v => v],
+];
+sliders.forEach(([id, vid, fmt]) => {
+  const el = $(id);
+  el.oninput = () => { $(vid).textContent = fmt(el.value); updateEncoded(); };
+});
+
+$('showKey').onclick = () => {
+  const k = $('key');
+  k.type = k.type === 'password' ? 'text' : 'password';
+  $('showKey').textContent = k.type === 'password' ? 'show' : 'hide';
+};
+
+// ===== Vigenère cipher =====
+function vigenereEncode(text, key) {
+  if (!key) return text;
+  const k = key.toUpperCase().replace(/[^A-Z]/g, '');
+  if (!k.length) return text;
+  let ki = 0;
+  return text.toUpperCase().split('').map(ch => {
+    if (ch >= 'A' && ch <= 'Z') {
+      const shift = k.charCodeAt(ki % k.length) - 65;
+      ki++;
+      return String.fromCharCode((ch.charCodeAt(0) - 65 + shift) % 26 + 65);
+    }
+    return ch;
+  }).join('');
+}
+
+function updateEncoded() {
+  const raw = $('msg').value.toUpperCase().trim();
+  const key = $('key').value.trim();
+  if (!raw) { $('encoded-display').textContent = '—'; return; }
+  const enc = vigenereEncode(raw, key);
+  $('encoded-display').textContent = key ? `"${raw}" + key "${key.toUpperCase()}" → "${enc}"` : '(no key — sending plaintext)';
+  const hasKey = key.replace(/[^A-Za-z]/g,'').length > 0;
+  $('enc-pill').textContent = hasKey ? 'encrypted' : 'no encryption';
+  $('enc-pill').className = 'pill ' + (hasKey ? 'on' : '');
+}
+$('msg').oninput = updateEncoded;
+$('key').oninput = updateEncoded;
+updateEncoded();
+
+// ===== Audio =====
+let ac = null;
+let osc = null, gainNode = null;
+
+function ensureAC() {
+  if (!ac) {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (ac.state === 'suspended') ac.resume();
+}
+
+function toneOn() {
+  if (osc) { try { osc.stop(); } catch {} osc = null; }
+  ensureAC();
+  osc = ac.createOscillator();
+  gainNode = ac.createGain();
+  osc.type = $('wave').value;
+  osc.frequency.value = +$('freq').value;
+  gainNode.gain.value = +$('vol').value;
+  osc.connect(gainNode);
+  gainNode.connect(ac.destination);
+  osc.start();
+}
+
+function toneOff() {
+  if (!osc) return;
+  // short ramp-down to avoid click
+  gainNode.gain.setTargetAtTime(0, ac.currentTime, 0.008);
+  const o = osc; const g = gainNode;
+  setTimeout(() => { try { o.stop(); } catch {} }, 80);
+  osc = null; gainNode = null;
+}
+
+// ===== Timing =====
+let stopFlag = false;
+let unitMs = 100;
+
+function delay(ms) {
+  return new Promise(res => setTimeout(res, ms));
+}
+
+async function waitOrStop(ms) {
+  const steps = Math.ceil(ms / 10);
+  for (let i = 0; i < steps; i++) {
+    if (stopFlag) return;
+    await delay(10);
+  }
+}
+
+async function flashOn() {
+  toneOn();
+  $('dot').classList.add('on');
+}
+
+async function flashOff() {
+  toneOff();
+  $('dot').classList.remove('on');
+}
+
+async function sendSymbol(code) {
+  for (const c of code) {
+    if (stopFlag) break;
+    await flashOn();
+    await waitOrStop(c === '.' ? unitMs : unitMs * 3);
+    await flashOff();
+    await waitOrStop(unitMs);   // inter-symbol gap
+  }
+}
+
+async function transmit(text) {
+  unitMs = Math.round(1200 / Math.max(5, +$('wpm').value));
+  const words = text.toUpperCase().trim().split(/\s+/);
+  for (let wi = 0; wi < words.length; wi++) {
+    if (stopFlag) break;
+    const word = words[wi];
+    for (let ci = 0; ci < word.length; ci++) {
+      if (stopFlag) break;
+      const ch = word[ci];
+      const code = MORSE[ch];
+      if (!code) continue;
+      $('status').textContent = `"${ch}" → ${code}`;
+      $('symbols').textContent = code;
+      await sendSymbol(code);
+      // letter gap: 3 units total; 1 already done after last symbol
+      if (ci < word.length - 1) await waitOrStop(unitMs * 2);
+    }
+    if (wi < words.length - 1 && !stopFlag) {
+      $('status').textContent = 'word gap';
+      $('symbols').textContent = '/';
+      await waitOrStop(unitMs * 6);   // word gap: 7 units total; 1 already done
+    }
+  }
+  await flashOff();
+  $('status').textContent = stopFlag ? 'stopped' : 'done ✓';
+  $('symbols').textContent = '\u00a0';
+  $('send').disabled = false;
+  $('stop').disabled = true;
+  stopFlag = false;
+}
+
+$('send').onclick = async () => {
+  const raw = $('msg').value.trim();
+  if (!raw) return;
+  const key = $('key').value.trim();
+  const text = vigenereEncode(raw, key);
+  $('send').disabled = true;
+  $('stop').disabled = false;
+  stopFlag = false;
+  await transmit(text);
+};
+
+$('stop').onclick = () => {
+  stopFlag = true;
+  flashOff();
+  $('stop').disabled = true;
+};
+</script>
+</body>
+</html>
