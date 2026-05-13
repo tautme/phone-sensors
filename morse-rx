@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Morse Audio Receiver</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 520px; margin: 2rem auto;
+         padding: 0 1rem; background: #0a0a0d; color: #e6e6ea; line-height: 1.5; }
+  h1 { font-size: 1.4rem; margin: 0 0 .3rem; }
+  h2 { font-size: .85rem; text-transform: uppercase; letter-spacing: .08em;
+       color: #6a6a7a; margin: 1.1rem 0 .4rem; }
+  .row { display: flex; gap: .5rem; margin: .45rem 0; flex-wrap: wrap; align-items: center; }
+  button { padding: .5rem 1rem; font-size: .95rem; cursor: pointer; border-radius: 6px;
+           background: #1a1a22; color: #e6e6ea; border: 1px solid #2d2d3d; }
+  button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  button.danger  { background: #b3261e; border-color: #b3261e; color: #fff; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.small { padding: .25rem .55rem; font-size: .8rem; }
+  input[type=range] { width: 130px; vertical-align: middle; }
+  input[type=text], input[type=password] {
+    padding: .45rem .55rem; font-size: .95rem; border-radius: 6px;
+    background: #1a1a22; color: #e6e6ea; border: 1px solid #2d2d3d; flex: 1; }
+  .val { font-family: ui-monospace, monospace; font-size: .82rem;
+         color: #ffd93d; min-width: 4em; display: inline-block; }
+  label { font-size: .88rem; color: #a8a8b8; }
+  /* signal meter */
+  .meter-wrap { width: 100%; height: 10px; background: #1a1a22;
+                border-radius: 5px; overflow: hidden; border: 1px solid #2d2d3d; }
+  .meter-fill { height: 100%; width: 0%; border-radius: 5px; transition: width .06s; }
+  #raw-fill  { background: #3d4663; }
+  #filt-fill { background: #4ecdc4; }
+  /* dot indicator */
+  .dot-ind { width: 12px; height: 12px; border-radius: 50%; background: #222;
+             flex-shrink: 0; transition: background .04s; }
+  .dot-ind.on { background: #ffd93d; box-shadow: 0 0 10px #ffd93d88; }
+  /* output boxes */
+  .out-box {
+    font-family: ui-monospace, monospace; font-size: 1rem;
+    background: #1a1a22; border: 1px solid #2d2d3d; border-radius: 6px;
+    padding: .6rem .75rem; min-height: 3.5em; word-break: break-all;
+    line-height: 1.6; white-space: pre-wrap;
+  }
+  #symbols { font-family: ui-monospace, monospace; font-size: 1.2rem;
+             letter-spacing: 3px; color: #4ecdc4; min-height: 1.5em; }
+  #status  { font-family: ui-monospace, monospace; font-size: .82rem;
+             color: #ffd93d; min-height: 1.3em; }
+  .pill { padding: 2px 9px; border-radius: 999px; font-size: .72rem;
+          background: #1a1a22; border: 1px solid #2d2d3d; font-family: ui-monospace, monospace; }
+  .pill.on   { background: #16a34a; border-color: #16a34a; color: #fff; }
+  .pill.warn { background: #d4a017; border-color: #d4a017; color: #fff; }
+  small { color: #6a6a7a; }
+  details summary { cursor: pointer; font-size: .82rem; color: #6a6a7a;
+                    user-select: none; margin-top: .6rem; }
+</style>
+</head>
+<body>
+
+<h1>Morse Audio Receiver</h1>
+<p><small>Listens via mic, filters for a specific tone, decodes Morse, and optionally decrypts with a shared Vigenère key. Pair with the Morse Audio Transmitter.</small></p>
+
+<h2>Start</h2>
+<div class="row">
+  <button id="startBtn" class="primary">Start listening</button>
+  <button id="stopBtn" class="danger" disabled>Stop</button>
+  <button id="clearBtn">Clear</button>
+  <span class="dot-ind" id="dot"></span>
+  <span id="enc-pill" class="pill">no key</span>
+</div>
+<div id="status">idle</div>
+
+<h2>Frequency filter</h2>
+<div class="row">
+  <label>center</label>
+  <input id="freq" type="range" min="200" max="2000" step="10" value="700">
+  <span class="val" id="freqVal">700 Hz</span>
+</div>
+<div class="row">
+  <label>bandwidth (Q)</label>
+  <input id="q" type="range" min="2" max="60" step="1" value="20">
+  <span class="val" id="qVal">20</span>
+  <small id="bwLabel">±17 Hz</small>
+</div>
+<div class="row">
+  <label>threshold</label>
+  <input id="thr" type="range" min="0.001" max="0.08" step="0.001" value="0.015">
+  <span class="val" id="thrVal">0.015</span>
+  <button id="autoThr" class="small">auto-calibrate</button>
+</div>
+
+<h2>Signal levels</h2>
+<div class="row"><label style="width:4.5em">raw mic</label>
+  <div class="meter-wrap" style="flex:1"><div class="meter-fill" id="raw-fill"></div></div>
+</div>
+<div class="row"><label style="width:4.5em">filtered</label>
+  <div class="meter-wrap" style="flex:1"><div class="meter-fill" id="filt-fill"></div></div>
+</div>
+<p><small>Tune <b>center</b> to match the transmitter's frequency. Raise <b>bandwidth Q</b> to reject noise. If filtered level doesn't react to the tone, lower Q or retune center. The <b>threshold</b> line sits between silence and signal — use auto-calibrate while the room is quiet.</small></p>
+
+<h2>Decryption key (optional)</h2>
+<div class="row">
+  <input type="password" id="key" placeholder="shared key — leave blank for plaintext">
+  <button class="small" id="showKey">show</button>
+</div>
+
+<h2>Received (raw / encrypted)</h2>
+<div class="out-box" id="raw-out"></div>
+<div id="symbols">&nbsp;</div>
+
+<h2>Decrypted output</h2>
+<div class="out-box" id="dec-out"></div>
+<div class="row">
+  <button id="copyRaw" class="small">Copy raw</button>
+  <button id="copyDec" class="small">Copy decrypted</button>
+</div>
+
+<details>
+  <summary>Tuning tips</summary>
+  <p style="font-size:.8rem;color:#a8a8b8;margin-top:.5rem;line-height:1.6">
+    Match the <b>center frequency</b> exactly to the transmitter's tone (default 700 Hz on both).<br>
+    <b>Q</b> controls selectivity: Q=20 passes ≈±17 Hz around center, Q=60 passes ≈±6 Hz.
+    Higher Q rejects more noise but requires the transmitter to be very precisely on-frequency.
+    Start at Q=20 and raise if you're getting false triggers from background noise.<br>
+    <b>Auto-calibrate</b> sniffs the room for one second and sets threshold just above the noise floor.<br>
+    The receiver uses adaptive timing — the shortest pulse seen becomes the "dot" reference.
+    Let a few characters arrive before expecting perfect decoding.
+  </p>
+</details>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ===== Morse table =====
+const MORSE = {
+  '.-':'A','-...':'B','-.-.':'C','-..':'D','.':'E','..-.':'F','--.':'G','....':'H',
+  '..':'I','.---':'J','-.-':'K','.-..':'L','--':'M','-.':'N','---':'O','.--.':'P',
+  '--.-':'Q','.-.':'R','...':'S','-':'T','..-':'U','...-':'V','.--':'W','-..-':'X',
+  '-.--':'Y','--..':'Z',
+  '-----':'0','.----':'1','..---':'2','...--':'3','....-':'4','.....':'5',
+  '-....':'6','--...':'7','---..':'8','----.':'9',
+  '.-.-.-':'.','--..--':',','..--..':'?','.----.':"'",'-.-.--':'!','-..-.':'/',
+  '-.--.':'(',  '-.--.-':')','.-...':'&','---...':':','-.-.-.':';','-...-':'=',
+  '.-.-.':'+','-....-':'-','..--.-':'_','.-..-.':'"','...-..-':'$','.--.-.':'@'
+};
+
+// ===== Vigenère DECODER =====
+function vigenereDecode(text, key) {
+  if (!key) return text;
+  const k = key.toUpperCase().replace(/[^A-Z]/g, '');
+  if (!k.length) return text;
+  let ki = 0;
+  return text.toUpperCase().split('').map(ch => {
+    if (ch >= 'A' && ch <= 'Z') {
+      const shift = k.charCodeAt(ki % k.length) - 65;
+      ki++;
+      return String.fromCharCode((ch.charCodeAt(0) - 65 - shift + 26) % 26 + 65);
+    }
+    return ch;
+  }).join('');
+}
+
+function updateDecrypted() {
+  const raw = $('raw-out').textContent;
+  const key = $('key').value.trim();
+  $('dec-out').textContent = vigenereDecode(raw, key) || '';
+  const hasKey = key.replace(/[^A-Za-z]/g,'').length > 0;
+  $('enc-pill').textContent = hasKey ? 'key set' : 'no key';
+  $('enc-pill').className = 'pill ' + (hasKey ? 'on' : '');
+}
+$('key').oninput = updateDecrypted;
+
+$('showKey').onclick = () => {
+  const k = $('key');
+  k.type = k.type === 'password' ? 'text' : 'password';
+  $('showKey').textContent = k.type === 'password' ? 'show' : 'hide';
+};
+
+// ===== slider wiring =====
+$('freq').oninput = () => {
+  $('freqVal').textContent = $('freq').value + ' Hz';
+  if (bpFilter) bpFilter.frequency.value = +$('freq').value;
+  updateBW();
+};
+$('q').oninput = () => {
+  $('qVal').textContent = $('q').value;
+  if (bpFilter) bpFilter.Q.value = +$('q').value;
+  updateBW();
+};
+$('thr').oninput = () => { $('thrVal').textContent = (+$('thr').value).toFixed(3); };
+function updateBW() {
+  const hz = +$('freq').value, q = +$('q').value;
+  $('bwLabel').textContent = `±${Math.round(hz / q / 2)} Hz`;
+}
+updateBW();
+
+// ===== audio state =====
+let ac, rawAna, filtAna, rawBuf, filtBuf;
+let bpFilter;
+let micStream;
+let running = false;
+
+// ===== decoder state =====
+let toneOn = false, tStart = 0;
+let symbols = '', lastSpace = true;
+const pulses = [], gaps = [];
+
+function dotUnit() { return pulses.length < 2 ? 80 : Math.min(...pulses); }
+function classifyPulse(ms) {
+  if (ms < 18) return null;
+  pulses.push(ms); if (pulses.length > 20) pulses.shift();
+  return ms < dotUnit() * 2 ? '.' : '-';
+}
+function isWordGap(ms) {
+  if (gaps.length >= 3) return ms > Math.min(...gaps) * 1.7;
+  return ms > dotUnit() * 5;
+}
+function flushLetter() {
+  if (!symbols) return;
+  const ch = MORSE[symbols] || '?';
+  $('raw-out').textContent += ch;
+  symbols = ''; $('symbols').textContent = '\u00a0'; lastSpace = false;
+  updateDecrypted();
+}
+function addSpace() {
+  if (lastSpace) return;
+  $('raw-out').textContent += ' '; lastSpace = true;
+  updateDecrypted();
+}
+
+function getRms(buf, analyser) {
+  analyser.getFloatTimeDomainData(buf);
+  let s = 0; for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+  return Math.sqrt(s / buf.length);
+}
+
+// ===== main loop =====
+function loop() {
+  if (!running) return;
+  const now = performance.now();
+
+  const rawRms  = getRms(rawBuf,  rawAna);
+  const filtRms = getRms(filtBuf, filtAna);
+  const thr = +$('thr').value;
+  const on = filtRms > thr;
+
+  // meters (scale: raw 0..0.5, filt 0..0.1)
+  $('raw-fill').style.width  = Math.min(100, rawRms  / 0.5  * 100) + '%';
+  $('filt-fill').style.width = Math.min(100, filtRms / 0.08 * 100) + '%';
+  $('dot').classList.toggle('on', on);
+
+  if (on !== toneOn) {
+    const dur = now - tStart;
+    if (toneOn) {
+      // tone just ended → classify pulse
+      const sym = classifyPulse(dur);
+      if (sym) { symbols += sym; $('symbols').textContent = symbols; }
+    } else {
+      // silence just ended → record gap for adaptive word detection
+      if (dur > dotUnit() * 2) { gaps.push(dur); if (gaps.length > 15) gaps.shift(); }
+    }
+    toneOn = on; tStart = now;
+  } else if (!toneOn) {
+    const dur = now - tStart;
+    if (symbols && dur > dotUnit() * 2) flushLetter();
+    if (dur > dotUnit() * 5 && isWordGap(dur)) addSpace();
+  }
+
+  $('status').textContent =
+    on ? `tone  rms=${filtRms.toFixed(4)}  sym=${symbols||'—'}` :
+         `silent  unit≈${dotUnit()}ms  gaps=${gaps.length}`;
+
+  requestAnimationFrame(loop);
+}
+
+// ===== start / stop =====
+$('startBtn').onclick = async () => {
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: {
+      echoCancellation: false, noiseSuppression: false, autoGainControl: false
+    }});
+  } catch (e) { alert('Mic error: ' + e.message); return; }
+
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  const src = ac.createMediaStreamSource(micStream);
+
+  // Raw analyser (no filter)
+  rawAna = ac.createAnalyser(); rawAna.fftSize = 2048;
+  rawBuf  = new Float32Array(rawAna.fftSize);
+  src.connect(rawAna);
+
+  // Bandpass filter → filtered analyser
+  bpFilter = ac.createBiquadFilter();
+  bpFilter.type = 'bandpass';
+  bpFilter.frequency.value = +$('freq').value;
+  bpFilter.Q.value = +$('q').value;
+  filtAna = ac.createAnalyser(); filtAna.fftSize = 2048;
+  filtBuf = new Float32Array(filtAna.fftSize);
+  src.connect(bpFilter);
+  bpFilter.connect(filtAna);
+
+  toneOn = false; tStart = performance.now();
+  symbols = ''; lastSpace = true;
+  pulses.length = 0; gaps.length = 0;
+  running = true;
+  $('startBtn').disabled = true; $('stopBtn').disabled = false;
+  $('status').textContent = 'listening…';
+  loop();
+};
+
+$('stopBtn').onclick = () => {
+  running = false;
+  if (micStream) micStream.getTracks().forEach(t => t.stop());
+  if (ac) ac.close();
+  $('startBtn').disabled = false; $('stopBtn').disabled = true;
+  $('status').textContent = 'stopped';
+  $('dot').classList.remove('on');
+  flushLetter();
+};
+
+$('clearBtn').onclick = () => {
+  $('raw-out').textContent = '';
+  $('dec-out').textContent = '';
+  $('symbols').textContent = '\u00a0';
+  symbols = ''; lastSpace = true;
+  pulses.length = 0; gaps.length = 0;
+};
+
+// ===== auto-calibrate =====
+$('autoThr').onclick = async () => {
+  if (!running) { alert('Start listening first, then stay quiet for 1 second.'); return; }
+  $('status').textContent = 'calibrating — stay quiet…';
+  const samples = [];
+  const t0 = performance.now();
+  while (performance.now() - t0 < 1000) {
+    filtAna.getFloatTimeDomainData(filtBuf);
+    let s = 0; for (let i = 0; i < filtBuf.length; i++) s += filtBuf[i] * filtBuf[i];
+    samples.push(Math.sqrt(s / filtBuf.length));
+    await new Promise(r => setTimeout(r, 30));
+  }
+  const noise = Math.max(...samples);
+  const newThr = Math.min(0.08, Math.max(0.002, noise * 3));
+  $('thr').value = newThr;
+  $('thrVal').textContent = newThr.toFixed(3);
+  $('status').textContent = `threshold set to ${newThr.toFixed(3)} (noise floor: ${noise.toFixed(3)})`;
+};
+
+// ===== copy =====
+async function copyEl(id) {
+  try {
+    await navigator.clipboard.writeText($(id).textContent);
+    const b = id === 'raw-out' ? $('copyRaw') : $('copyDec');
+    const orig = b.textContent; b.textContent = 'copied ✓';
+    setTimeout(() => b.textContent = orig, 1200);
+  } catch { alert('Clipboard denied'); }
+}
+$('copyRaw').onclick = () => copyEl('raw-out');
+$('copyDec').onclick = () => copyEl('dec-out');
+</script>
+</body>
+</html>
