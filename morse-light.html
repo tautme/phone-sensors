@@ -1,0 +1,198 @@
+  <!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Morse Flashlight</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 2rem auto;
+         padding: 0 1rem; background: #0a0a0d; color: #e6e6ea; line-height: 1.5; }
+  h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+  textarea { width: 100%; padding: .6rem; font-size: 1rem; border-radius: 6px;
+             background: #1a1a22; color: #e6e6ea; border: 1px solid #2d2d3d;
+             resize: vertical; min-height: 80px; }
+  .row { display: flex; gap: .5rem; margin: .6rem 0; flex-wrap: wrap; align-items: center; }
+  button { padding: .55rem 1.1rem; font-size: 1rem; cursor: pointer; border-radius: 6px;
+           background: #1a1a22; color: #e6e6ea; border: 1px solid #2d2d3d; }
+  button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  button.danger  { background: #b3261e; border-color: #b3261e; color: #fff; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  label { font-size: .9rem; }
+  input[type=range] { width: 120px; vertical-align: middle; }
+  #status { font-family: ui-monospace, monospace; font-size: .85rem;
+            min-height: 1.4em; color: #ffd93d; margin: .3rem 0; }
+  #symbols { font-family: ui-monospace, monospace; font-size: 1.2rem;
+             letter-spacing: 3px; min-height: 1.6em; color: #4ecdc4; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+         background: #333; margin-right: .3rem; vertical-align: middle; transition: background .05s; }
+  .dot.on { background: #ffd93d; box-shadow: 0 0 8px #ffd93d; }
+  small { color: #6a6a7a; }
+</style>
+</head>
+<body>
+
+<h1>Morse Flashlight</h1>
+<p><small>Types text into Morse code and blinks the phone's flashlight (rear torch). Needs HTTPS and Chrome on Android. iOS blocks torch access from the web.</small></p>
+
+<textarea id="msg" placeholder="type your message here…">HELLO</textarea>
+
+<div class="row">
+  <button id="send" class="primary">Send</button>
+  <button id="stop" class="danger" disabled>Stop</button>
+  <span class="dot" id="dot"></span>
+  <span id="status">ready</span>
+</div>
+
+<div class="row">
+  <label>WPM <input id="wpm" type="range" min="5" max="25" value="10"> <span id="wpmVal">10</span></label>
+</div>
+
+<div id="symbols">&nbsp;</div>
+
+<p><small>Morse: dots and dashes appear above as it transmits. The flashlight tracks in real time.<br>
+Works on Android Chrome. On iOS, try pointing the camera at the Morse Listener demo instead — the screen brightness approach won't work for torch, but this app can still drive the <em>screen</em> white for a visible flash (see note below if torch fails).</small></p>
+
+<script>
+const $ = id => document.getElementById(id);
+
+const MORSE = {
+  A:'.-', B:'-...', C:'-.-.', D:'-..', E:'.', F:'..-.', G:'--.', H:'....', I:'..',
+  J:'.---', K:'-.-', L:'.-..', M:'--', N:'-.', O:'---', P:'.--.', Q:'--.-', R:'.-.', 
+  S:'...', T:'-', U:'..-', V:'...-', W:'.--', X:'-..-', Y:'-.--', Z:'--..',
+  '0':'-----','1':'.----','2':'..---','3':'...--','4':'....-','5':'.....',
+  '6':'-....','7':'--...','8':'---..','9':'----.',
+  '.':'.-.-.-', ',':'--..--', '?':'..--..', "'":'.----.', '!':'-.-.--',
+  '/':'-..-.', '(':'-.--.',  ')':'-.--.-', '&':'.-...',  ':':'---...',
+  '=':'-...-',  '+':'.-.-.', '-':'-....-', '_':'..--.-'
+};
+
+let track = null;       // MediaStreamTrack for torch
+let running = false;
+let stopFlag = false;
+let unitMs = 120;       // one dot length (ms)
+
+$('wpm').oninput = () => {
+  const v = +$('wpm').value;
+  $('wpmVal').textContent = v;
+  unitMs = Math.round(1200 / v);
+};
+
+// ===== torch =====
+async function getTorch() {
+  if (track) return track;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' }
+    });
+    track = stream.getVideoTracks()[0];
+    if (!track.getCapabilities().torch) {
+      track.stop(); track = null;
+      return null;
+    }
+    return track;
+  } catch { return null; }
+}
+
+async function setTorch(on) {
+  if (track) {
+    try { await track.applyConstraints({ advanced: [{ torch: on }] }); } catch {}
+  }
+}
+
+// ===== screen flash fallback =====
+let screenOverlay = null;
+function setScreen(on) {
+  if (!screenOverlay) {
+    screenOverlay = document.createElement('div');
+    Object.assign(screenOverlay.style, {
+      position:'fixed', inset:'0', zIndex:'9999',
+      background:'white', pointerEvents:'none', opacity:'0', transition:'none'
+    });
+    document.body.appendChild(screenOverlay);
+  }
+  screenOverlay.style.opacity = on ? '1' : '0';
+}
+
+// ===== blink =====
+function delay(ms) {
+  return new Promise(res => {
+    if (stopFlag) { res(); return; }
+    setTimeout(res, ms);
+  });
+}
+
+let useTorch = false;
+
+async function flash(on) {
+  $('dot').classList.toggle('on', on);
+  if (useTorch) await setTorch(on);
+  else setScreen(on);
+}
+
+async function sendSymbol(sym) {
+  if (stopFlag) return;
+  for (const c of sym) {
+    if (stopFlag) break;
+    await flash(true);
+    await delay(c === '.' ? unitMs : unitMs * 3);     // dot or dash on-time
+    await flash(false);
+    await delay(unitMs);                               // gap between symbols
+  }
+}
+
+async function transmit(text) {
+  const words = text.toUpperCase().trim().split(/\s+/);
+  $('symbols').textContent = '';
+
+  for (let wi = 0; wi < words.length; wi++) {
+    if (stopFlag) break;
+    const word = words[wi];
+    for (let ci = 0; ci < word.length; ci++) {
+      if (stopFlag) break;
+      const ch = word[ci];
+      const code = MORSE[ch];
+      if (!code) continue;
+      $('status').textContent = `sending: "${ch}" → ${code}`;
+      $('symbols').textContent = code;
+      await sendSymbol(code);
+      if (ci < word.length - 1) await delay(unitMs * 2); // letter gap (3 units total: 1 already done)
+    }
+    if (wi < words.length - 1) {
+      $('status').textContent = 'word gap';
+      $('symbols').textContent = '/';
+      await delay(unitMs * 6);                          // word gap (7 units total: 1 already done)
+    }
+  }
+
+  await flash(false);
+  setScreen(false);
+  $('status').textContent = stopFlag ? 'stopped' : 'done ✓';
+  $('symbols').textContent = '\u00a0';
+  $('send').disabled = false;
+  $('stop').disabled = true;
+  running = false;
+  stopFlag = false;
+}
+
+$('send').onclick = async () => {
+  const msg = $('msg').value.trim();
+  if (!msg) return;
+  $('send').disabled = true;
+  $('stop').disabled = false;
+  stopFlag = false; running = true;
+
+  // try torch; fall back to screen flash
+  const t = await getTorch();
+  useTorch = !!t;
+  $('status').textContent = useTorch ? 'using torch 🔦' : 'torch unavailable — using screen flash';
+
+  await transmit(msg);
+};
+
+$('stop').onclick = () => {
+  stopFlag = true;
+  $('stop').disabled = true;
+};
+</script>
+</body>
+</html>
