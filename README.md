@@ -4,7 +4,7 @@
 
 What happens on the weekend in twenty and twenty six, when walking along the beach you see a distant camera flash? You remember the time you were in a stadium trying to find a friend, but the cell network was jammed by eighty thousand people. Flash your cell phone light to locate them, and then wish you had the time to build an app that transmitted and recieved messages with a morse code light via cell phone camera. This weekend, we go down that rabbit hole of sensors with Claude taking the time to build.
 
-Ten small HTML files exploring what a smartphone's sensors can do from inside a browser. No apps, no installs, no servers.
+Twenty-seven small HTML files exploring what a smartphone's sensors can do from inside a browser. No apps, no installs, no servers.
 
 **Live demos:** [tautme.github.io/phone-sensors](https://tautme.github.io/phone-sensors/)
 
@@ -20,32 +20,37 @@ The result is a small map of where the boundaries of the modern web platform act
 
 ## The demos
 
-| File | Sensor | What it does |
-|---|---|---|
-| `morse-listener.html` | Microphone | Decodes Morse code from audio tones |
-| `morse-vision.html` | Camera | Decodes Morse from a flashing light |
-| `object-vision.html` | Camera + ML | Names objects in the camera view (COCO-SSD via TF.js) |
-| `count-vision.html` | Camera + ML | Object detection with a running tally |
-| `inertial-etch.html` | Tilt | Etch-A-Sketch driven by phone orientation |
-| `inertial-blueprint.html` | Compass + accelerometer | Walks and maps a room as a blueprint |
-| `magnetometer-waterfall.html` | Magnetometer | FFT spectrogram of the local magnetic field |
-| `bluetooth-reader.html` | Bluetooth LE | Connects to BLE devices and reads live sensor data |
-| `connection-health.html` | Network | Pings + speed tests over time, with charts |
-| `sensor-etch.html` | Everything | Painting + synthesized violin driven by all sensors |
-| `sensor_etch_pixel.html` | Everything | Sensor Etch in artist mode — pixel canvas variant |
-| `guitar-tuner.html` | Microphone | Pitch detector with a waterfall and a tuned-in confirmation |
-| `accel-tuner.html` | Accelerometer | Tune a guitar by pressing the phone to its body and reading vibration |
-| `ocr-vision.html` | Camera + OCR | Book-spine OCR with a side-by-side comparison view |
-| `ocr_vision_count.html` | Camera + OCR | Multi-spine OCR with a running count |
-| `ocr-spine-select.html` | Camera + OCR | Multi-spine OCR with manual region selection |
-| `qa_llm.html` | In-browser LLM | Document Q&A with citation jumps, model runs locally |
-| `hearing-range.html` | Speaker | Log-scale tone generator (20 Hz–22 kHz), sweep + mark floor/ceiling |
-| `mic-range.html` | Microphone | Live FFT waterfall + max-hold response curve, AGC/NS/EC disabled |
-| `echolocation.html` | Speaker + mic | Chirp + cross-correlation, distance to walls from echo time-of-flight |
-| `gait-fingerprint.html` | Accelerometer | Walk for 30 s; step pattern becomes a saveable, comparable fingerprint |
-| `product_tour.html` | — | Walkthrough of how Sensor Etch works |
-| `tech_tour.html` | — | Tour of the underlying electronics and music |
-| `index.html` | — | Showcase landing page |
+[`index.html`](https://tautme.github.io/phone-sensors/) is the **canonical catalog** — every card is rendered from a single inline JSON inventory, and it feature-detects your device's APIs on load (detection only, no permission prompts). The table below is generated from that same inventory, so the two never disagree.
+
+| File | Category | Sensors / APIs | Permission | What it does |
+|---|---|---|---|---|
+| `inertial-etch.html` | Motion | DeviceMotion, DeviceOrientation | gated | Etch-A-Sketch driven by tilting the phone. |
+| `inertial-blueprint.html` | Motion | DeviceMotion, DeviceOrientation | gated | Pedestrian dead reckoning: walk a room and it draws the blueprint, no GPS. |
+| `accel-tuner.html` | Motion | DeviceMotion | gated | Tune a guitar by pressing the phone to its body and reading string vibration. |
+| `gait-fingerprint.html` | Motion | DeviceMotion | gated | Walk 30 s; your step pattern becomes a saveable, comparable fingerprint. |
+| `magnetometer-waterfall.html` | Motion | Magnetometer | silent | FFT spectrogram of the local magnetic field — motors, magnets, electronics made visible. |
+| `guitar-tuner.html` | Audio | Microphone, Web Audio | gated | Pitch detector with a waterfall display and a tuned-in confirmation. |
+| `mic-range.html` | Audio | Microphone, Web Audio | gated | Live FFT waterfall plus max-hold response curve, AGC/NS/EC disabled. |
+| `hearing-range.html` | Audio | Web Audio | none | Log-scale tone generator, 20 Hz–22 kHz; sweep and mark your hearing floor and ceiling. |
+| `echolocation.html` | Audio | Microphone, Web Audio | gated | Speaker chirp + cross-correlation: distance to walls from echo time-of-flight. |
+| `morse-listener.html` | Audio | Microphone, Web Audio | gated | Decodes Morse code from audio tones, with adaptive dot timing. |
+| `morse-transmit.html` | Audio | Web Audio | none | Sends text as Morse audio tones; optional Vigenère cipher layer. |
+| `morse-listencrypt.html` | Audio | Microphone, Web Audio | gated | Tone-filtered Morse decoder with optional Vigenère decryption; pairs with the transmitter. |
+| `object-vision.html` | Camera/Vision | Camera, WebGL | gated | Names objects in the camera view — COCO-SSD via TF.js, in the browser. *(loads a CDN model)* |
+| `count-vision.html` | Camera/Vision | Camera, WebGL | gated | Object detection with a running tally of everything the camera has seen. *(loads a CDN model)* |
+| `morse-vision.html` | Camera/Vision | Camera | gated | Decodes Morse from a flashing light, with percentile auto-thresholding. |
+| `morse-light.html` | Camera/Vision | Camera, Torch | gated | Types text into Morse and blinks the rear flashlight via the torch constraint. |
+| `heartRate.html` | Camera/Vision | Camera, Torch (optional) | gated | Fingertip over the lens; flash-lit photoplethysmography reads your pulse in BPM. |
+| `ocr-vision.html` | Camera/Vision | Camera, WASM | gated | Book-spine OCR (Tesseract.js) with a side-by-side comparison view. *(loads a CDN model)* |
+| `ocr_vision_count.html` | Camera/Vision | Camera, WASM | gated | Multi-spine OCR with a running count of titles read. *(loads a CDN model)* |
+| `ocr-spine-select.html` | Camera/Vision | Camera, WASM | gated | Multi-spine OCR with manual region selection before recognition. *(loads a CDN model)* |
+| `bluetooth-reader.html` | Radio/Network | Web Bluetooth | gated | Connects to BLE devices and streams live GATT sensor characteristics. |
+| `connection-health.html` | Radio/Network | Network Info (optional) | silent | Pings + speed tests over time with charts; reads connection type with no prompt. |
+| `sensor-etch.html` | Multi-sensor | DeviceMotion, DeviceOrientation, Microphone, Web Audio | gated | Painting + synthesized violin driven by everything the phone can sense at once. |
+| `sensor_etch_pixel.html` | Multi-sensor | DeviceMotion, DeviceOrientation, Microphone, Web Audio | gated | Sensor Etch in artist mode — pixel canvas variant; whistle to change brush size. |
+| `qa_llm.html` | Tours/Meta | WASM | none | Document Q&A with citation jumps; a Transformers.js model runs entirely in your browser. *(loads a CDN model)* |
+| `product_tour.html` | Tours/Meta | — | none | Walkthrough of how Sensor Etch works, sensor by sensor. |
+| `tech_tour.html` | Tours/Meta | — | none | Tour of the electronics and music inside the instrument. |
 
 ## What's reachable, what isn't
 
