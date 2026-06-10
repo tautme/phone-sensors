@@ -3,216 +3,215 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>What your phone can do in a browser</title>
-<meta name="description" content="A walk through the sensors hidden inside every smartphone, and what you can build with them in plain HTML — no apps, no installs, no servers.">
+<title>phone-sensors — tool catalog</title>
+<meta name="description" content="Catalog of single-file HTML tools exploring what a smartphone's sensors can do from inside a browser. No apps, no installs, no servers.">
 <style>
-figure { margin: 2rem 0; text-align: center; }
-figure img { max-width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--rule); }
-figcaption { color: var(--muted); font-size: .85rem; margin-top: .5rem;
-             font-family: ui-sans-serif, system-ui, sans-serif; font-style: italic; }
   :root {
-    --bg: #fbfbf8;
-    --ink: #1a1a1f;
-    --muted: #6a6a73;
-    --rule: #e5e3dc;
-    --accent: #b3261e;
-    --code-bg: #f0eee6;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #15151a;
-      --ink: #e8e6df;
-      --muted: #8e8e98;
-      --rule: #2a2a32;
-      --accent: #ff7a6e;
-      --code-bg: #1f1f26;
-    }
+    --bg: #050505; --ink: #c9c9c9; --bright: #f2f2f2; --dim: #6b6b6b;
+    --rule: #222; --accent: #ffb454; --ok: #8ec07c; --bad: #555;
   }
   * { box-sizing: border-box; }
   html, body { background: var(--bg); color: var(--ink); }
-  body {
-    font: 17px/1.55 ui-serif, Georgia, "Times New Roman", serif;
-    max-width: 680px; margin: 0 auto; padding: 2rem 1.2rem 4rem;
-  }
-  h1 { font: 700 2.1rem/1.15 ui-sans-serif, system-ui, sans-serif;
-       margin: 0 0 .3rem; letter-spacing: -0.015em; }
-  h2 { font: 600 1.3rem/1.2 ui-sans-serif, system-ui, sans-serif;
-       margin: 2.2rem 0 .5rem; letter-spacing: -0.01em; }
-  h3 { font: 600 1rem/1.3 ui-sans-serif, system-ui, sans-serif;
-       margin: 1.2rem 0 .3rem; }
-  .lead { color: var(--muted); font-size: 1.05rem; margin: 0 0 2rem; }
-  .byline { color: var(--muted); font-size: .85rem; margin: 0 0 2rem;
-            font-family: ui-sans-serif, system-ui, sans-serif; }
-  hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
-  a { color: inherit; text-decoration: underline; text-decoration-color: var(--accent);
-      text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
-  a:hover { background: var(--accent); color: var(--bg); text-decoration: none; }
-  code { font: .9em ui-monospace, monospace; background: var(--code-bg);
-         padding: 1px 5px; border-radius: 3px; }
-  pre { background: var(--code-bg); padding: .8rem 1rem; border-radius: 4px;
-        overflow-x: auto; font: .82rem/1.45 ui-monospace, monospace; }
-  blockquote { border-left: 3px solid var(--accent); padding: .2rem 0 .2rem 1rem;
-               margin: 1rem 0; color: var(--muted); font-style: italic; }
-  .demos { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-           gap: .6rem; margin: 1rem 0; }
-  .demo {
-    display: block; padding: .7rem .9rem;
-    border: 1px solid var(--rule); border-radius: 4px;
-    text-decoration: none; font-family: ui-sans-serif, system-ui, sans-serif;
-    color: var(--ink); font-size: .9rem;
-  }
-  .demo:hover { border-color: var(--accent); background: transparent; color: var(--ink); }
-  .demo strong { display: block; font-size: .95rem; margin-bottom: .15rem; }
-  .demo span { color: var(--muted); font-size: .8rem; }
-  table { border-collapse: collapse; width: 100%; font-size: .9rem;
-          font-family: ui-sans-serif, system-ui, sans-serif; margin: .8rem 0; }
-  th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid var(--rule); }
-  th { font-weight: 600; }
-  td.yes { color: #16a34a; }
-  td.no  { color: var(--accent); }
-  td.maybe { color: #d4a017; }
-  .note { background: var(--code-bg); padding: .7rem 1rem; border-radius: 4px;
-          font-size: .92rem; }
-  ul li { margin: .25rem 0; }
-  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule);
-           color: var(--muted); font-size: .85rem;
-           font-family: ui-sans-serif, system-ui, sans-serif; }
+  body { font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+         max-width: 980px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+  h1 { font-size: 1.25rem; color: var(--bright); margin: 0 0 .2rem; font-weight: 600; }
+  h2 { font-size: 1rem; color: var(--bright); margin: 2.5rem 0 .8rem; font-weight: 600;
+       border-bottom: 1px solid var(--rule); padding-bottom: .3rem; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .sub { color: var(--dim); margin: 0 0 1.5rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0 0 .5rem; }
+  .chip { font: inherit; background: none; color: var(--ink); border: 1px solid var(--rule);
+          padding: .15rem .6rem; cursor: pointer; border-radius: 2px; }
+  .chip:hover { border-color: var(--dim); }
+  .chip.on { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+  .count { color: var(--dim); margin: .3rem 0 1rem; }
+  .cat { color: var(--dim); text-transform: uppercase; letter-spacing: .12em;
+         font-size: .75rem; margin: 1.6rem 0 .5rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: .6rem; }
+  .card { border: 1px solid var(--rule); padding: .7rem .8rem; border-radius: 2px;
+          display: block; color: inherit; }
+  a.card:hover { border-color: var(--accent); text-decoration: none; }
+  .card h3 { margin: 0 0 .15rem; font-size: .95rem; color: var(--bright); font-weight: 600; }
+  .card .one { color: var(--ink); margin: 0 0 .5rem; font-size: .85rem; }
+  .badges { display: flex; flex-wrap: wrap; gap: .3rem; font-size: .72rem; }
+  .b { border: 1px solid var(--rule); color: var(--dim); padding: 0 .35rem; border-radius: 2px; }
+  .b.api.yes { color: var(--ok); border-color: #2e3a2e; }
+  .b.api.no { color: var(--bad); text-decoration: line-through; }
+  .b.perm { color: var(--ink); }
+  .b.dep { color: var(--accent); border-color: #4a3520; }
+  .b.exp { color: var(--dim); font-style: italic; }
+  .plats { margin-top: .4rem; font-size: .72rem; color: var(--dim); }
+  .plats .y { color: var(--ink); }
+  .plats .n { color: var(--bad); text-decoration: line-through; }
+  .card.dead { opacity: .45; }
+  .why { margin-top: .4rem; font-size: .75rem; color: var(--accent); }
+  table { border-collapse: collapse; width: 100%; font-size: .85rem; margin: .8rem 0; }
+  th, td { text-align: left; padding: .3rem .6rem .3rem 0; border-bottom: 1px solid var(--rule); }
+  th { color: var(--dim); font-weight: 400; }
+  .seed { border-left: 2px solid var(--rule); padding: .1rem 0 .1rem .8rem; margin: .8rem 0; }
+  .seed b { color: var(--bright); font-weight: 600; }
+  .note { color: var(--dim); font-size: .85rem; }
+  footer { margin-top: 3rem; color: var(--dim); font-size: .8rem;
+           border-top: 1px solid var(--rule); padding-top: 1rem; }
 </style>
 </head>
 <body>
 
-<h1>What your phone can do in a browser</h1>
-<figure>
-  <img src="sensor-etch-1777853514927.jpg" alt="Painting made with the Sensor Etch demo">
-  <figcaption>make art with phone sensors, sound and dance</figcaption>
-</figure>
-<p class="lead">A walk through the sensors hidden inside every smartphone, and what you can build with them in plain HTML — no apps, no installs, no servers.</p>
+<h1>phone-sensors</h1>
+<p class="sub">Single-file HTML tools probing what a smartphone's sensors can do from inside a browser.
+No apps, no installs, no servers. This page requests nothing — green badges mean <em>your</em> device can run the tool.
+<a href="https://github.com/tautme/phone-sensors">source</a></p>
 
-<p>Your phone is dense with sensors. Cameras and microphones, of course, but also accelerometers, gyroscopes, magnetometers, ambient light sensors, GPS, Bluetooth radios. Most of them are accessible from a web page — a single HTML file, no app store involved. I built a series of small demos to see how far you can get with just <code>&lt;canvas&gt;</code>, the Web APIs, and a couple hundred lines of JavaScript each.</p>
+<div class="chips" id="catChips"></div>
+<div class="chips" id="permChips"></div>
+<p class="count" id="count"></p>
+<div id="catalog"></div>
 
-<p>Each demo is one self-contained file. Open it on your phone over HTTPS, grant the permission it asks for, watch the sensor become a thing you can see, hear, or play with.</p>
+<h2 id="combine">Combine these</h2>
+<p class="note">Every tool here is a part. The interesting projects are compositions — proof:
+<a href="echolocation.html">echolocation.html</a> is just mic-range's FFT pointed at hearing-range's tone generator.</p>
+<div class="seed"><b>camera + OCR + IndexedDB</b> → walk a bookstore, catalog every spine shelf-by-shelf (an OpenBookMap). Parts: <a href="ocr-spine-select.html">ocr-spine-select</a>.</div>
+<div class="seed"><b>accelerometer + geolocation</b> → pothole logger: every jolt above threshold stamped with GPS coordinates. Parts: <a href="gait-fingerprint.html">gait-fingerprint</a>'s peak detector.</div>
+<div class="seed"><b>speaker chirp + mic FFT</b> → sonar. Already exists: <a href="echolocation.html">echolocation</a> measures distance to walls from echo time-of-flight.</div>
+<div class="seed"><b>flashlight Morse TX + camera Morse RX</b> → optical chat between two phones, no radio, with the Vigenère layer from <a href="morse-transmit.html">morse-transmit</a>. Parts: <a href="morse-light.html">morse-light</a>, <a href="morse-vision.html">morse-vision</a>.</div>
+<div class="seed"><b>magnetometer + dead reckoning</b> → walk a room, map wiring and pipes in the walls. Parts: <a href="magnetometer-waterfall.html">magnetometer-waterfall</a>, <a href="inertial-blueprint.html">inertial-blueprint</a>.</div>
+<div class="seed"><b>camera pulse + Web Audio synth</b> → your heartbeat as a drone instrument. Parts: <a href="heartRate.html">heartRate</a>, <a href="sensor-etch.html">sensor-etch</a>'s violin.</div>
 
-<h2>The demos</h2>
-
-<div class="demos">
-  <a class="demo" href="morse-listener.html"><strong>Morse Listener</strong><span>microphone → text</span></a>
-  <a class="demo" href="morse-vision.html"><strong>Morse Vision</strong><span>camera → text from flashing light</span></a>
-  <a class="demo" href="object-vision.html"><strong>Object Vision</strong><span>camera + ML → object names</span></a>
-  <a class="demo" href="count-vision.html"><strong>Count Vision</strong><span>object detection with tally</span></a>
-  <a class="demo" href="inertial-etch.html"><strong>Inertial Etch</strong><span>tilt → drawing</span></a>
-  <a class="demo" href="inertial-blueprint.html"><strong>Inertial Blueprint</strong><span>compass + steps → room map</span></a>
-  <a class="demo" href="magnetometer-waterfall.html"><strong>Magnetometer Waterfall</strong><span>magnetic field → spectrogram</span></a>
-  <a class="demo" href="bluetooth-reader.html"><strong>Bluetooth Reader</strong><span>BLE → live sensor data</span></a>
-  <a class="demo" href="connection-health.html"><strong>Connection Health</strong><span>network → RTT + speed graphs</span></a>
-  <a class="demo" href="sensor-etch.html"><strong>Sensor Etch</strong><span>everything at once → painting + music</span></a>
-  <a class="demo" href="sensor_etch_pixel.html"><strong>Sensor Etch (Artist)</strong><span>everything at once → pixel canvas</span></a>
-  <a class="demo" href="guitar-tuner.html"><strong>Guitar Tuner</strong><span>microphone → pitch + waterfall</span></a>
-  <a class="demo" href="accel-tuner.html"><strong>Accel Tuner</strong><span>accelerometer → pitch from vibration</span></a>
-  <a class="demo" href="ocr-vision.html"><strong>OCR Vision</strong><span>camera → book spine OCR</span></a>
-  <a class="demo" href="ocr_vision_count.html"><strong>OCR Vision Count</strong><span>camera → multi-spine OCR with tally</span></a>
-  <a class="demo" href="ocr-spine-select.html"><strong>OCR Spine Select</strong><span>camera → manually selected spines OCR</span></a>
-  <a class="demo" href="qa_llm.html"><strong>Doc Q&amp;A</strong><span>local LLM → answers with citations</span></a>
-  <a class="demo" href="hearing-range.html"><strong>Hearing Range</strong><span>speaker sweep → your audible band</span></a>
-  <a class="demo" href="mic-range.html"><strong>Mic Range</strong><span>FFT waterfall → microphone response</span></a>
-  <a class="demo" href="echolocation.html"><strong>Echolocation</strong><span>chirp + cross-correlate → wall distance</span></a>
-  <a class="demo" href="gait-fingerprint.html"><strong>Gait Fingerprint</strong><span>accelerometer → unique walking signature</span></a>
-  <a class="demo" href="product_tour.html"><strong>Sensor Etch Tour</strong><span>how it works</span></a>
-  <a class="demo" href="tech_tour.html"><strong>Phone Sensor Tour</strong><span>understand → electronics + music</span></a>
-</div>
-
-<hr>
-
-<h2>The first surprise: the microphone is just a number</h2>
-
-<p>The microphone gives you a stream of floating-point samples between -1 and 1, sixty thousand of them per second. That's it. Everything you do with audio — voice recognition, music, transcription — is something built on top of those numbers.</p>
-
-<p>The first demo, <a href="morse-listener.html"><strong>Morse Listener</strong></a>, listens for tones and decodes them. The whole pipeline is: read RMS volume of the audio buffer; if it's above a threshold, you're hearing a tone; if it lasts a short time, that's a dot; longer, a dash; pauses become letter and word breaks.</p>
-
-<p>The fiddly part isn't the audio API. It's that real Morse practice files (like the ones from ARRL) use Farnsworth timing — the dots are sent fast but the gaps are stretched, to give beginners more time to think. A naive decoder treats the long gaps as word breaks and produces garbage. The fix is to detect timing adaptively: take the shortest pulse you've seen as your "dot" reference, and let everything else key off it.</p>
-
-<h2>The camera is also just a number, sort of</h2>
-
-<p>You can grab a frame from <code>&lt;video&gt;</code> into a canvas and read individual pixel values. <a href="morse-vision.html"><strong>Morse Vision</strong></a> uses this to read Morse code from a flashing light: tap a small region of the frame, sample its brightness, and feed those samples through the same decoder as the audio version.</p>
-
-<p>The hard problem here was thresholding. A flashlight against a dark wall has wildly different brightness levels than a phone screen against a bright room. So instead of a fixed threshold, the page tracks recent brightness percentiles: 10th and 90th. The threshold sits at the midpoint between them. The "on" level adjusts to whatever you're pointing at.</p>
-
-<p>For richer scene understanding, <a href="object-vision.html"><strong>Object Vision</strong></a> loads <a href="https://github.com/tensorflow/tfjs-models/tree/master/coco-ssd">COCO-SSD</a> via TensorFlow.js — about a 5 MB MobileNet that recognizes 80 common COCO classes. It runs three times a second on a phone via WebGL. Drawing labeled boxes on a transparent overlay canvas synced to the video gives you what feels like augmented reality, in a single HTML file. <a href="count-vision.html"><strong>Count Vision</strong></a> adds a tally that increments only when an object newly appears, so a stationary chair doesn't run the count to a million.</p>
-
-<h2>The accelerometer + gyroscope are kind of magic</h2>
-
-<p>The phone's IMU returns three numbers for orientation (roll, pitch, yaw) and three for acceleration in each axis, at about 60 Hz. <a href="inertial-etch.html"><strong>Inertial Etch</strong></a> turns this into an Etch-A-Sketch: tilt the phone like a tray and a pen moves across the canvas, with velocity proportional to tilt angle.</p>
-
-<p>The catch with sensor APIs on iOS is that they require permission via a single user gesture, and the permission API is different from the standard Web API. So you call <code>DeviceOrientationEvent.requestPermission()</code> if it exists, fall back to just attaching the listener if it doesn't. iOS also reports orientation differently in landscape mode, so portrait-only is the simplest constraint to design for.</p>
-
-<p>If you can detect a step from acceleration peaks (which you can, with hysteresis and a refractory period), and you have compass heading, you can do <strong>pedestrian dead reckoning</strong>: estimate position by integrating step direction over time. <a href="inertial-blueprint.html"><strong>Inertial Blueprint</strong></a> uses this to map a room. Stand at a corner, drop a marker, walk to the next corner, drop another. The result is a floor plan drawn in browser SVG. It drifts — usually 10-20% over a single room — but it works in a building with no GPS and no external reference. A web page mapping a room with no app installed felt like the kind of thing that shouldn't be possible.</p>
-
-<h2>The magnetometer turns your phone into an instrument</h2>
-
-<p>The magnetometer reports the local magnetic field in microteslas, three axes, about 60 Hz. Earth's field is 25-65 μT depending on latitude. That's the baseline. Anything that perturbs it — a magnet, a motor, a piece of steel rebar — shows up as an oscillation on top.</p>
-
-<p><a href="magnetometer-waterfall.html"><strong>Magnetometer Waterfall</strong></a> takes a sliding 128-sample FFT of the total field magnitude (DC removed, Hann windowed) and renders it as a spectrogram. Walking past a fridge produces a slow ramp. A spinning hard drive makes a horizontal line at the rotor frequency. Waving a magnet shows up as a streak. The phone is doing real signal processing on physical-world data, in the browser, with no library.</p>
-
-<h2>What you can't do, and why</h2>
-
-<p>The list of "phone has it but the web can't reach it" is instructive — every gap is a deliberate decision about privacy.</p>
-
+<h2 id="gaps">What the browser can't reach</h2>
+<p class="note">The gaps are the privacy lesson. The phone has all of these; each "no" below is a deliberate decision —
+WiFi scan results alone would let any page geolocate you within meters, indoors, silently.</p>
 <table>
-<thead><tr><th>Sensor</th><th>Web access?</th><th>Why not</th></tr></thead>
-<tbody>
-<tr><td>WiFi scan list</td><td class="no">No</td><td>Strong location fingerprint</td></tr>
-<tr><td>Cell tower / signal strength</td><td class="no">No</td><td>Even more precise location</td></tr>
-<tr><td>Barometer (pressure)</td><td class="no">No</td><td>No API exposes it, somehow</td></tr>
-<tr><td>Heart rate / SpO2</td><td class="no">No</td><td>Health data, native only</td></tr>
-<tr><td>LiDAR depth (iPhone Pro)</td><td class="no">No</td><td>Not exposed</td></tr>
-<tr><td>Fingerprint / Face ID</td><td class="maybe">Auth only</td><td>WebAuthn, no raw biometrics</td></tr>
-<tr><td>Bluetooth Low Energy</td><td class="yes">Yes (not iOS)</td><td>One device at a time, via chooser</td></tr>
-<tr><td>Magnetometer raw</td><td class="yes">Yes (Chrome)</td><td>Behind permission prompt</td></tr>
-<tr><td>GPS</td><td class="yes">Yes</td><td>Standard <code>geolocation</code> API</td></tr>
-<tr><td>Camera / Mic</td><td class="yes">Yes</td><td>Per-origin permission</td></tr>
-</tbody>
+<tr><th>Sensor</th><th>Web access?</th></tr>
+<tr><td>Camera, microphone</td><td>Yes, with permission</td></tr>
+<tr><td>Accelerometer, gyroscope, compass</td><td>Yes — iOS prompts once, Android Chrome asks nothing</td></tr>
+<tr><td>Magnetometer (raw)</td><td>Chrome only, behind a flag</td></tr>
+<tr><td>GPS</td><td>Yes, standard geolocation API, with permission</td></tr>
+<tr><td>Bluetooth LE</td><td>Chrome only — not iOS Safari, not Firefox</td></tr>
+<tr><td>WiFi scanning</td><td>No, anywhere</td></tr>
+<tr><td>Cell tower / signal strength</td><td>No, anywhere</td></tr>
+<tr><td>Barometer (pressure)</td><td>No</td></tr>
+<tr><td>Heart rate / SpO2 sensor</td><td>No (native apps only — but see the camera-PPG workaround above)</td></tr>
+<tr><td>LiDAR depth</td><td>No</td></tr>
+<tr><td>Fingerprint / Face ID</td><td>Authentication only via WebAuthn, never raw biometrics</td></tr>
 </table>
 
-<p><a href="bluetooth-reader.html"><strong>Bluetooth Reader</strong></a> is the most "I can't believe this works in a browser" demo. Tap connect, the browser shows a system chooser of nearby BLE devices, you pick one, and the page walks its GATT service tree, reads characteristics, and subscribes to notifications. With a fitness band you get live heart rate. With a Govee thermometer puck you get temperature and humidity. With an ESP32 you get whatever you advertised. iOS Safari refuses to support it, citing security; on Android Chrome it's been stable for years.</p>
-
-<p>The web doesn't expose WiFi or cell signal, and that's not a bug. <a href="connection-health.html"><strong>Connection Health</strong></a> is the legit substitute: it pings a Cloudflare endpoint every few seconds, runs periodic speed tests, charts RTT and download speed over time, and exports the data. You can't read your radio, but you can measure the actual experience your radio produces. Catches flaky WiFi just as well as native tools, with the bonus that it's a URL you can send anyone.</p>
-
-<h2>The thing about combining them</h2>
-
-<p>Once you have all the sensors hooked up, it's tempting to use them all at once. <a href="sensor-etch.html"><strong>Sensor Etch</strong></a> is the "everything painting" version of the Etch-A-Sketch: tilt moves the pen; mic volume sets the brush size; the camera's average color becomes the ink color; download speed tints the background; and the accelerometer triggers percussion sounds while pen position drives a synthesized violin tone, snapped to a pentatonic scale. Walking around with the phone produces a painting with a soundtrack composed by the room you're in.</p>
-
-<p>That sounds gimmicky written down, and maybe it is. But the experience of standing in a kitchen, painting a yellow stripe because the camera saw a banana, while the violin pitches up because you tilted the phone, while drum hits land in time with your footsteps — that's something that genuinely couldn't exist five years ago, and it's a 30 KB HTML file.</p>
-
-<h2>Is it safe to share these?</h2>
-
-<p>Yes. Each page runs entirely in the recipient's browser. There's no server logging. Camera and microphone permissions are granted per-origin (per-domain) by the user via a system dialog, and browsers show indicator icons whenever they're active. The pages are open source — anyone can read all the code with <code>view-source:</code> in front of the URL.</p>
-
-<p>The only practical caution: host them on a clean static site (GitHub Pages, Netlify, Cloudflare Pages) rather than on a domain that also serves third-party scripts you don't control, since those scripts would inherit the same-origin permissions. For typical personal-site hosting: nothing to worry about.</p>
-
-<h2>The takeaway</h2>
-
-<p>For most of computing's history, doing something interesting with a sensor required an app, an SDK, app store review, signing, distribution. Now most of it requires an HTML file you can email someone. The browser team-by-team did the hard work — making sensors reachable, making permissions clear, making the boundaries of what a page can do legible — and the result is a development environment that is, for a surprising amount of physical-world tinkering, the best one we have.</p>
-
-<p>None of these demos are products. They're sketches. The point is that the things you'd need to write a serious app for in 2015 — object detection, room mapping, BLE scanning, real-time audio analysis — now fit in a single file you can debug in DevTools.</p>
-
-<blockquote>The web platform got really good while no one was looking.</blockquote>
-
-<p>If you build something with these or fork the demos, I'd love to see it.</p>
-
-<hr>
-
-<h3>Code</h3>
-<p>All ten demos are single HTML files. <a href="https://github.com/tautme">tautme repo</a>. MIT licensed. Each file is self-contained — no build step, no bundler, no framework. Open in a browser, read the source, change a line, refresh.</p>
-
-<h3>Running them locally</h3>
-<pre>git clone https://github.com/tautme/phone-sensors.git
-cd phone-sensors
-python3 -m http.server
-# open http://localhost:8000 on your phone (same WiFi)</pre>
-<p>Sensor APIs require <code>https://</code> or <code>localhost</code>. For phone access over local network use a tool like <code>ngrok</code> or just deploy to GitHub Pages — it's free and HTTPS by default.</p>
-
 <footer>
-  <p>Built with Claude. Free to share, modify, fork. No analytics on this page.</p>
+🔒 gated = a system permission dialog appears before any data flows ·
+👁 silent = readable with no prompt at all ·
+∅ none = touches no sensor.
+Tools marked 🔒 that use only motion sensors prompt on iOS but run <em>silently</em> on Android Chrome.
+Cards are rendered from one inline JSON array — view source, append an object, done. MIT.
 </footer>
 
+<script>
+const TOOLS = [
+{"file":"inertial-etch.html","name":"Inertial Etch","category":"Motion","sensors":["motion","orient"],"permissions":"gated","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":false},"oneliner":"Etch-A-Sketch driven by tilting the phone.","status":"stable"},
+{"file":"inertial-blueprint.html","name":"Inertial Blueprint","category":"Motion","sensors":["motion","orient"],"permissions":"gated","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":false},"oneliner":"Pedestrian dead reckoning: walk a room and it draws the blueprint, no GPS.","status":"experimental"},
+{"file":"accel-tuner.html","name":"Accel Tuner","category":"Motion","sensors":["motion"],"permissions":"gated","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":false},"oneliner":"Tune a guitar by pressing the phone to its body and reading string vibration.","status":"stable"},
+{"file":"gait-fingerprint.html","name":"Gait Fingerprint","category":"Motion","sensors":["motion"],"permissions":"gated","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":false},"oneliner":"Walk 30 s; your step pattern becomes a saveable, comparable fingerprint.","status":"experimental"},
+{"file":"magnetometer-waterfall.html","name":"Magnetometer Waterfall","category":"Motion","sensors":["mag"],"permissions":"silent","deps":"none","platforms":{"ios":false,"android_chrome":true,"desktop":false},"oneliner":"FFT spectrogram of the local magnetic field — motors, magnets, electronics made visible.","status":"experimental"},
+{"file":"guitar-tuner.html","name":"Guitar Tuner","category":"Audio","sensors":["mic","audio"],"permissions":"gated","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":true},"oneliner":"Pitch detector with a waterfall display and a tuned-in confirmation.","status":"stable"},
+{"file":"mic-range.html","name":"Mic Range","category":"Audio","sensors":["mic","audio"],"permissions":"gated","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":true},"oneliner":"Live FFT waterfall plus max-hold response curve, AGC/NS/EC disabled.","status":"stable"},
+{"file":"hearing-range.html","name":"Hearing Range","category":"Audio","sensors":["audio"],"permissions":"none","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":true},"oneliner":"Log-scale tone generator, 20 Hz–22 kHz; sweep and mark your hearing floor and ceiling.","status":"stable"},
+{"file":"echolocation.html","name":"Echolocation","category":"Audio","sensors":["mic","audio"],"permissions":"gated","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":true},"oneliner":"Speaker chirp + cross-correlation: distance to walls from echo time-of-flight.","status":"experimental"},
+{"file":"morse-listener.html","name":"Morse Listener","category":"Audio","sensors":["mic","audio"],"permissions":"gated","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":true},"oneliner":"Decodes Morse code from audio tones, with adaptive dot timing.","status":"stable"},
+{"file":"morse-transmit.html","name":"Morse Audio Transmitter","category":"Audio","sensors":["audio"],"permissions":"none","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":true},"oneliner":"Sends text as Morse audio tones; optional Vigenère cipher layer.","status":"stable"},
+{"file":"morse-listencrypt.html","name":"Morse Audio Receiver","category":"Audio","sensors":["mic","audio"],"permissions":"gated","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":true},"oneliner":"Tone-filtered Morse decoder with optional Vigenère decryption; pairs with the transmitter.","status":"stable"},
+{"file":"object-vision.html","name":"Object Vision","category":"Camera/Vision","sensors":["cam","webgl"],"permissions":"gated","deps":"cdn-model","platforms":{"ios":true,"android_chrome":true,"desktop":true},"oneliner":"Names objects in the camera view — COCO-SSD via TF.js, in the browser.","status":"stable"},
+{"file":"count-vision.html","name":"Count Vision","category":"Camera/Vision","sensors":["cam","webgl"],"permissions":"gated","deps":"cdn-model","platforms":{"ios":true,"android_chrome":true,"desktop":true},"oneliner":"Object detection with a running tally of everything the camera has seen.","status":"stable"},
+{"file":"morse-vision.html","name":"Morse Vision","category":"Camera/Vision","sensors":["cam"],"permissions":"gated","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":true},"oneliner":"Decodes Morse from a flashing light, with percentile auto-thresholding.","status":"stable"},
+{"file":"morse-light.html","name":"Morse Flashlight","category":"Camera/Vision","sensors":["cam","torch"],"permissions":"gated","deps":"none","platforms":{"ios":false,"android_chrome":true,"desktop":false},"oneliner":"Types text into Morse and blinks the rear flashlight via the torch constraint.","status":"stable"},
+{"file":"heartRate.html","name":"Pulse","category":"Camera/Vision","sensors":["cam","torch?"],"permissions":"gated","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":false},"oneliner":"Fingertip over the lens; flash-lit photoplethysmography reads your pulse in BPM.","status":"experimental"},
+{"file":"ocr-vision.html","name":"OCR Vision","category":"Camera/Vision","sensors":["cam","wasm"],"permissions":"gated","deps":"cdn-model","platforms":{"ios":true,"android_chrome":true,"desktop":true},"oneliner":"Book-spine OCR (Tesseract.js) with a side-by-side comparison view.","status":"experimental"},
+{"file":"ocr_vision_count.html","name":"OCR Vision Count","category":"Camera/Vision","sensors":["cam","wasm"],"permissions":"gated","deps":"cdn-model","platforms":{"ios":true,"android_chrome":true,"desktop":true},"oneliner":"Multi-spine OCR with a running count of titles read.","status":"experimental"},
+{"file":"ocr-spine-select.html","name":"OCR Spine Select","category":"Camera/Vision","sensors":["cam","wasm"],"permissions":"gated","deps":"cdn-model","platforms":{"ios":true,"android_chrome":true,"desktop":true},"oneliner":"Multi-spine OCR with manual region selection before recognition.","status":"experimental"},
+{"file":"bluetooth-reader.html","name":"Bluetooth Reader","category":"Radio/Network","sensors":["bt"],"permissions":"gated","deps":"none","platforms":{"ios":false,"android_chrome":true,"desktop":true},"oneliner":"Connects to BLE devices and streams live GATT sensor characteristics.","status":"stable"},
+{"file":"connection-health.html","name":"Connection Health","category":"Radio/Network","sensors":["net?"],"permissions":"silent","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":true},"oneliner":"Pings + speed tests over time with charts; reads connection type with no prompt.","status":"stable"},
+{"file":"sensor-etch.html","name":"Sensor Etch","category":"Multi-sensor","sensors":["motion","orient","mic","audio"],"permissions":"gated","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":false},"oneliner":"Painting + synthesized violin driven by everything the phone can sense at once.","status":"stable"},
+{"file":"sensor_etch_pixel.html","name":"Sensor Etch Pixel","category":"Multi-sensor","sensors":["motion","orient","mic","audio"],"permissions":"gated","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":false},"oneliner":"Sensor Etch in artist mode — pixel canvas variant; whistle to change brush size.","status":"experimental"},
+{"file":"qa_llm.html","name":"Doc Q&A LLM","category":"Tours/Meta","sensors":["wasm"],"permissions":"none","deps":"cdn-model","platforms":{"ios":true,"android_chrome":true,"desktop":true},"oneliner":"Document Q&A with citation jumps; a Transformers.js model runs entirely in your browser.","status":"experimental"},
+{"file":"product_tour.html","name":"Product Tour","category":"Tours/Meta","sensors":[],"permissions":"none","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":true},"oneliner":"Walkthrough of how Sensor Etch works, sensor by sensor.","status":"stable"},
+{"file":"tech_tour.html","name":"Tech Tour","category":"Tours/Meta","sensors":[],"permissions":"none","deps":"none","platforms":{"ios":true,"android_chrome":true,"desktop":true},"oneliner":"Tour of the electronics and music inside the instrument.","status":"stable"}
+];
+
+// Capability detection only — nothing here requests a permission or opens a sensor.
+const CAPS = {
+  motion: { label:"DeviceMotion", test:()=>"DeviceMotionEvent" in window, why:"DeviceMotionEvent missing — no motion sensors here" },
+  orient: { label:"DeviceOrientation", test:()=>"DeviceOrientationEvent" in window, why:"DeviceOrientationEvent missing" },
+  mag:    { label:"Magnetometer", test:()=>"Magnetometer" in window, why:"requires the Generic Sensor Magnetometer — Chrome behind a flag, never iOS Safari" },
+  cam:    { label:"Camera", test:()=>!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia), why:"getUserMedia unavailable (needs HTTPS or localhost)" },
+  mic:    { label:"Mic", test:()=>!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia), why:"getUserMedia unavailable (needs HTTPS or localhost)" },
+  audio:  { label:"WebAudio", test:()=>!!(window.AudioContext||window.webkitAudioContext), why:"Web Audio missing" },
+  bt:     { label:"Bluetooth", test:()=>!!navigator.bluetooth, why:"requires Web Bluetooth — not in iOS Safari or Firefox" },
+  net:    { label:"NetInfo", test:()=>!!(navigator.connection||navigator.webkitConnection), why:"navigator.connection — Chromium only" },
+  torch:  { label:"Torch", test:()=>{try{return !!navigator.mediaDevices.getSupportedConstraints().torch}catch(e){return false}}, why:"flashlight (torch constraint) — Android Chrome only" },
+  wasm:   { label:"WASM", test:()=>typeof WebAssembly==="object", why:"WebAssembly missing" },
+  webgl:  { label:"WebGL", test:()=>{try{const c=document.createElement("canvas");return !!(c.getContext("webgl2")||c.getContext("webgl"))}catch(e){return false}}, why:"WebGL missing — ML models can't accelerate" }
+};
+const HAVE = {};
+for (const k in CAPS) { try { HAVE[k] = !!CAPS[k].test(); } catch (e) { HAVE[k] = false; } }
+
+const CATS = ["Motion","Audio","Camera/Vision","Radio/Network","Multi-sensor","Tours/Meta"];
+const PERM = { gated:"\u{1F512} gated", silent:"\u{1F441} silent", none:"∅ none" };
+let fCat = null, fPerm = null, fHere = false;
+
+function missing(t) {
+  return t.sensors.filter(s => !s.endsWith("?") && !HAVE[s]);
+}
+function esc(s) { return s.replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+
+function card(t) {
+  const miss = missing(t);
+  const badges = t.sensors.map(s => {
+    const opt = s.endsWith("?"), k = opt ? s.slice(0,-1) : s;
+    const ok = HAVE[k];
+    return `<span class="b api ${ok?"yes":"no"}" title="${ok?"available on this device":esc(CAPS[k].why)}">${CAPS[k].label}${opt?" (opt)":""}</span>`;
+  }).join("");
+  const p = t.platforms;
+  const plat = `<span class="${p.ios?"y":"n"}">iOS</span> · <span class="${p.android_chrome?"y":"n"}">Android</span> · <span class="${p.desktop?"y":"n"}">Desktop</span>`;
+  const why = miss.length ? `<div class="why">${esc(CAPS[miss[0]].why)}</div>` : "";
+  return `<a class="card${miss.length?" dead":""}" href="${t.file}">
+    <h3>${esc(t.name)} <span class="note">· ${t.file}</span></h3>
+    <p class="one">${esc(t.oneliner)}</p>
+    <div class="badges"><span class="b perm">${PERM[t.permissions]}</span>${badges}${t.deps==="cdn-model"?'<span class="b dep" title="loads an external ML model from a CDN">cdn-model</span>':""}${t.status==="experimental"?'<span class="b exp">experimental</span>':""}</div>
+    <div class="plats">${plat}</div>${why}</a>`;
+}
+
+function render() {
+  const shown = TOOLS.filter(t =>
+    (!fCat || t.category === fCat) &&
+    (!fPerm || t.permissions === fPerm) &&
+    (!fHere || missing(t).length === 0));
+  let html = "";
+  for (const c of CATS) {
+    const rows = shown.filter(t => t.category === c);
+    if (!rows.length) continue;
+    html += `<div class="cat">${c} · ${rows.length}</div><div class="grid">${rows.map(card).join("")}</div>`;
+  }
+  document.getElementById("catalog").innerHTML = html || '<p class="note">nothing matches these filters.</p>';
+  document.getElementById("count").textContent =
+    `${shown.length} of ${TOOLS.length} tools` + (fHere ? " runnable on this device" : "");
+}
+
+function chip(label, on, fn) {
+  const b = document.createElement("button");
+  b.className = "chip" + (on ? " on" : "");
+  b.textContent = label;
+  b.onclick = fn;
+  return b;
+}
+function drawChips() {
+  const cc = document.getElementById("catChips");
+  cc.replaceChildren(chip("all", !fCat, () => { fCat = null; update(); }));
+  for (const c of CATS) cc.appendChild(chip(c, fCat === c, () => { fCat = fCat === c ? null : c; update(); }));
+  const pc = document.getElementById("permChips");
+  pc.replaceChildren();
+  for (const p in PERM) pc.appendChild(chip(PERM[p], fPerm === p, () => { fPerm = fPerm === p ? null : p; update(); }));
+  pc.appendChild(chip("▶ works on my device", fHere, () => { fHere = !fHere; update(); }));
+}
+function update() { drawChips(); render(); }
+update();
+</script>
 </body>
 </html>
