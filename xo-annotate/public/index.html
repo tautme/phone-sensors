@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Image Share — XO Annotate</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 1.5rem auto;
+         padding: 0 1rem; line-height: 1.4; color: #1a1a1a; }
+  h1 { font-size: 1.4rem; margin: 0 0 .3rem; }
+  h2 { font-size: 1rem; margin: 1.4rem 0 .5rem; }
+  p.sub { color: #888; margin: 0 0 1rem; font-size: .92rem; }
+  .row { display: flex; gap: .6rem; align-items: center; margin: .55rem 0; flex-wrap: wrap; }
+  button { padding: .5rem .9rem; font-size: .95rem; cursor: pointer; border: 1px solid #bbb;
+           border-radius: 7px; background: #fafafa; }
+  button:hover:not(:disabled) { background: #f0f0f0; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.tool.active { background: #1769ff; color: #fff; border-color: #1769ff; }
+  button.danger { color: #b00; border-color: #d99; }
+  #canvasWrap {
+    position: relative; border: 3px solid #ccc; border-radius: 12px; background: #f3f3ef;
+    margin: .8rem 0; min-height: 220px; display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  #canvasWrap.empty::after {
+    content: "Upload an image to begin"; color: #aaa; font-size: .95rem; padding: 3rem;
+  }
+  canvas { display: block; max-width: 100%; touch-action: none; cursor: crosshair; }
+  #status { font-size: .9rem; color: #666; min-height: 1.2em; }
+  .pill { font-family: monospace; font-size: .8rem; background: #8881; border-radius: 20px;
+          padding: .2rem .7rem; }
+  small, .hint { color: #888; font-size: .85rem; }
+  input[type=file] { font-size: .9rem; }
+  ul#gallery { list-style: none; padding: 0; margin: .3rem 0; }
+  ul#gallery li { display: flex; align-items: center; gap: .7rem; padding: .45rem .2rem;
+                  border-bottom: 1px solid #eee; }
+  ul#gallery img { width: 56px; height: 42px; object-fit: cover; border-radius: 5px;
+                   border: 1px solid #ddd; background: #fff; }
+  ul#gallery .name { flex: 1; min-width: 0; }
+  ul#gallery .name b { display: block; overflow: hidden; text-overflow: ellipsis;
+                       white-space: nowrap; font-weight: 600; }
+  ul#gallery .name span { color: #999; font-size: .8rem; }
+  .toolbar { background: #8880d; }
+  kbd { background: #eee; border: 1px solid #ccc; border-bottom-width: 2px; border-radius: 4px;
+        padding: 0 .35rem; font-size: .8rem; font-family: monospace; }
+</style>
+</head>
+<body>
+
+<h1>Image Share — XO Annotate</h1>
+<p class="sub">Upload an image, mark it up with X's and O's, and share it. Made a wrong
+mark? It's easy to take back — undo, erase a single mark by tapping it, or clear everything.</p>
+
+<div class="row">
+  <input id="file" type="file" accept="image/*">
+  <span class="hint">PNG, JPG, GIF, WebP</span>
+</div>
+
+<div class="row toolbar">
+  <button id="toolX" class="tool active" title="Place an X (key: X)">✕ Mark X</button>
+  <button id="toolO" class="tool" title="Place an O (key: O)">◯ Mark O</button>
+  <button id="toolErase" class="tool" title="Tap a mark to remove it (key: E)">⌫ Erase</button>
+  <span class="pill" id="count">0 marks</span>
+</div>
+
+<div class="row">
+  <button id="undo" disabled title="Undo (Ctrl+Z)">↶ Undo</button>
+  <button id="redo" disabled title="Redo (Ctrl+Shift+Z)">↷ Redo</button>
+  <button id="clear" class="danger" disabled title="Remove all marks">Clear all</button>
+</div>
+
+<div id="canvasWrap" class="empty">
+  <canvas id="pad" width="640" height="480"></canvas>
+</div>
+
+<div class="row">
+  <button id="save" disabled>💾 Save &amp; share</button>
+  <button id="saveAnn" disabled title="Update marks on the already-saved image">Update marks</button>
+  <span id="status"></span>
+</div>
+<p class="hint">Tip: tap any existing mark — with any tool — to remove it. The
+<b>Erase</b> tool is just for removing without risk of adding a new one.
+Keyboard: <kbd>X</kbd> <kbd>O</kbd> <kbd>E</kbd> tools, <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo.</p>
+
+<h2>Saved images</h2>
+<p class="hint" id="galleryEmpty">Nothing saved yet.</p>
+<ul id="gallery"></ul>
+
+<script>
+const $ = id => document.getElementById(id);
+const canvas = $('pad'), ctx = canvas.getContext('2d');
+
+// --- editor state ----------------------------------------------------------
+let img = null;                 // the loaded Image element
+let imageData = null;           // data URL of the uploaded image (for first save)
+let filename = 'image';
+let marks = [];                 // [{type:'X'|'O', x, y}] x/y normalized 0..1
+let undone = [];                // redo stack
+let tool = 'X';
+let currentId = null;           // id once the image has been saved to the backend
+const HIT_RADIUS = 0.035;       // how close a tap must be (in normalized units) to hit a mark
+
+// --- tool selection --------------------------------------------------------
+function setTool(t) {
+  tool = t;
+  $('toolX').classList.toggle('active', t === 'X');
+  $('toolO').classList.toggle('active', t === 'O');
+  $('toolErase').classList.toggle('active', t === 'erase');
+}
+$('toolX').onclick = () => setTool('X');
+$('toolO').onclick = () => setTool('O');
+$('toolErase').onclick = () => setTool('erase');
+
+// --- file upload -----------------------------------------------------------
+$('file').onchange = (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  filename = f.name || 'image';
+  const reader = new FileReader();
+  reader.onload = () => loadImageFromDataURL(reader.result, /*fresh=*/true);
+  reader.readAsDataURL(f);
+};
+
+function loadImageFromDataURL(dataUrl, fresh) {
+  const im = new Image();
+  im.onload = () => {
+    img = im;
+    imageData = dataUrl;
+    if (fresh) {
+      marks = [];
+      undone = [];
+      currentId = null;
+      setStatus('');
+    }
+    fitCanvas();
+    draw();
+    refreshButtons();
+  };
+  im.onerror = () => setStatus('Could not load that image.', true);
+  im.src = dataUrl;
+}
+
+// Size the canvas to the image but cap it so big photos still fit the page.
+function fitCanvas() {
+  $('canvasWrap').classList.remove('empty');
+  const maxW = Math.min(700, $('canvasWrap').clientWidth - 6 || 700);
+  const maxH = 540;
+  let w = img.naturalWidth, h = img.naturalHeight;
+  const scale = Math.min(maxW / w, maxH / h, 1);
+  canvas.width = Math.round(w * scale);
+  canvas.height = Math.round(h * scale);
+}
+
+// --- placing / removing marks ---------------------------------------------
+function canvasPoint(evt) {
+  const r = canvas.getBoundingClientRect();
+  const cx = (evt.touches ? evt.touches[0].clientX : evt.clientX) - r.left;
+  const cy = (evt.touches ? evt.touches[0].clientY : evt.clientY) - r.top;
+  // normalize against the *displayed* size, then it maps to any canvas size
+  return { x: cx / r.width, y: cy / r.height };
+}
+
+// Returns the index of the topmost mark near a point, or -1.
+function markAt(x, y) {
+  for (let i = marks.length - 1; i >= 0; i--) {
+    if (Math.hypot(marks[i].x - x, marks[i].y - y) <= HIT_RADIUS) return i;
+  }
+  return -1;
+}
+
+function onPointer(evt) {
+  if (!img) return;
+  evt.preventDefault();
+  const { x, y } = canvasPoint(evt);
+
+  // Tapping an existing mark always removes it — the core "I changed my mind" path.
+  const hit = markAt(x, y);
+  if (hit !== -1) {
+    marks.splice(hit, 1);
+    undone = [];
+    afterChange('removed a mark');
+    return;
+  }
+  if (tool === 'erase') {
+    setStatus('No mark there to erase.');
+    return;
+  }
+  // Otherwise drop a new mark.
+  marks.push({ type: tool, x, y });
+  undone = [];
+  afterChange('placed ' + tool);
+}
+
+canvas.addEventListener('mousedown', onPointer);
+canvas.addEventListener('touchstart', onPointer, { passive: false });
+
+// --- undo / redo / clear ---------------------------------------------------
+function undo() {
+  if (!marks.length) return;
+  undone.push(marks.pop());
+  afterChange('undo');
+}
+function redo() {
+  if (!undone.length) return;
+  marks.push(undone.pop());
+  afterChange('redo');
+}
+function clearAll() {
+  if (!marks.length) return;
+  undone = marks.slice().reverse().concat(undone); // clearing is undoable-ish via redo
+  marks = [];
+  afterChange('cleared all marks');
+}
+$('undo').onclick = undo;
+$('redo').onclick = redo;
+$('clear').onclick = clearAll;
+
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  const k = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && k === 'z') {
+    e.preventDefault();
+    e.shiftKey ? redo() : undo();
+  } else if (k === 'x') setTool('X');
+  else if (k === 'o') setTool('O');
+  else if (k === 'e') setTool('erase');
+});
+
+function afterChange(msg) {
+  draw();
+  refreshButtons();
+  if (msg) setStatus(msg);
+}
+
+// --- rendering -------------------------------------------------------------
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (img) ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const size = Math.max(14, Math.min(canvas.width, canvas.height) * 0.05);
+  for (const m of marks) {
+    const px = m.x * canvas.width, py = m.y * canvas.height;
+    drawMark(m.type, px, py, size);
+  }
+}
+
+function drawMark(type, px, py, r) {
+  ctx.lineWidth = Math.max(3, r * 0.22);
+  ctx.lineCap = 'round';
+  // halo so marks stay visible on busy images
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth += 3;
+  strokeShape(type, px, py, r);
+  ctx.strokeStyle = type === 'X' ? '#e0263a' : '#1769ff';
+  ctx.lineWidth -= 3;
+  strokeShape(type, px, py, r);
+}
+
+function strokeShape(type, px, py, r) {
+  if (type === 'X') {
+    ctx.beginPath();
+    ctx.moveTo(px - r, py - r); ctx.lineTo(px + r, py + r);
+    ctx.moveTo(px + r, py - r); ctx.lineTo(px - r, py + r);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+// --- buttons / status ------------------------------------------------------
+function refreshButtons() {
+  const has = !!img;
+  $('undo').disabled = !marks.length;
+  $('redo').disabled = !undone.length;
+  $('clear').disabled = !marks.length;
+  $('save').disabled = !has;
+  $('saveAnn').disabled = !currentId;
+  $('count').textContent = marks.length + (marks.length === 1 ? ' mark' : ' marks');
+}
+
+let statusTimer = null;
+function setStatus(msg, isError) {
+  $('status').textContent = msg;
+  $('status').style.color = isError ? '#b00' : '#666';
+  clearTimeout(statusTimer);
+  if (msg && !isError) statusTimer = setTimeout(() => { $('status').textContent = ''; }, 2500);
+}
+
+// --- saving / loading ------------------------------------------------------
+async function save() {
+  if (!imageData) return;
+  setStatus('Saving…');
+  try {
+    const res = await fetch('/api/images', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, imageData, annotations: marks }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+    const data = await res.json();
+    currentId = data.id;
+    setStatus('Saved ✓ (id ' + data.id.slice(0, 6) + '…)');
+    refreshButtons();
+    loadGallery();
+  } catch (err) {
+    setStatus('Save failed: ' + err.message, true);
+  }
+}
+
+async function saveAnnotations() {
+  if (!currentId) return;
+  setStatus('Updating marks…');
+  try {
+    const res = await fetch('/api/images/' + currentId + '/annotations', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ annotations: marks }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+    setStatus('Marks updated ✓');
+    loadGallery();
+  } catch (err) {
+    setStatus('Update failed: ' + err.message, true);
+  }
+}
+$('save').onclick = save;
+$('saveAnn').onclick = saveAnnotations;
+
+async function loadGallery() {
+  let data;
+  try {
+    data = await (await fetch('/api/images')).json();
+  } catch { return; }
+  const list = $('gallery');
+  list.innerHTML = '';
+  $('galleryEmpty').style.display = data.images.length ? 'none' : 'block';
+  for (const it of data.images) {
+    const li = document.createElement('li');
+    const thumb = document.createElement('img');
+    thumb.src = '/api/images/' + it.id + '/file';
+    thumb.alt = it.filename;
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.innerHTML = '<b></b><span></span>';
+    name.querySelector('b').textContent = it.filename;
+    name.querySelector('span').textContent =
+      it.annotationCount + ' marks · ' + new Date(it.updatedAt).toLocaleString();
+    const open = document.createElement('button');
+    open.textContent = 'Edit';
+    open.onclick = () => openImage(it.id);
+    const del = document.createElement('button');
+    del.className = 'danger';
+    del.textContent = 'Delete';
+    del.onclick = () => removeImage(it.id);
+    li.append(thumb, name, open, del);
+    list.append(li);
+  }
+}
+
+async function openImage(id) {
+  try {
+    const meta = await (await fetch('/api/images/' + id)).json();
+    // pull the file as a data URL so re-saving works the same as a fresh upload
+    const blob = await (await fetch('/api/images/' + id + '/file')).blob();
+    const dataUrl = await new Promise((resolve) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.readAsDataURL(blob);
+    });
+    filename = meta.meta.filename;
+    loadImageFromDataURL(dataUrl, /*fresh=*/false);
+    marks = meta.annotations || [];
+    undone = [];
+    currentId = id;
+    draw();
+    refreshButtons();
+    setStatus('Loaded "' + filename + '" — edit and Update marks.');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (err) {
+    setStatus('Could not open image: ' + err.message, true);
+  }
+}
+
+async function removeImage(id) {
+  if (!confirm('Delete this image and its marks?')) return;
+  await fetch('/api/images/' + id, { method: 'DELETE' });
+  if (currentId === id) currentId = null;
+  refreshButtons();
+  loadGallery();
+}
+
+// --- init ------------------------------------------------------------------
+refreshButtons();
+loadGallery();
+</script>
+</body>
+</html>

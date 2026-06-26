@@ -1,0 +1,10 @@
+{
+  "name": "xo-annotate",
+  "version": "1.0.0",
+  "description": "Image share app: upload an image, annotate it with X and O marks (with easy correction), and store images + annotations in organized per-image folders.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "MIT"
+}
