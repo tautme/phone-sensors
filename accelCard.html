@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#050505">
+<title>accelCard</title>
+<style>
+  :root {
+    --bg: #050505; --grid: #1b1b1b; --dim: #6b6b6b; --ink: #c9c9c9; --bright: #f2f2f2;
+    --x: #ff5d5d; --y: #5dff9b; --z: #5db2ff; --accent: #ffb454;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+               overflow: hidden; overscroll-behavior: none;
+               font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  /* The graph is the whole screen. */
+  #graph { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  /* Tap-to-start hint — vanishes once the sensor is live, leaving only the graph. */
+  #start { position: fixed; inset: 0; display: flex; flex-direction: column;
+           align-items: center; justify-content: center; gap: .6rem; text-align: center;
+           background: radial-gradient(circle at 50% 45%, #111 0%, #050505 70%);
+           cursor: pointer; -webkit-tap-highlight-color: transparent; padding: 1.5rem; }
+  #start h1 { margin: 0; font-size: 1.6rem; color: var(--bright); letter-spacing: .04em; }
+  #start p { margin: 0; color: var(--dim); max-width: 22rem; }
+  #start .tap { margin-top: .6rem; color: var(--accent); font-size: 1.05rem; }
+  #start.hidden { display: none; }
+
+  /* The only chrome over the graph: one small toggle. */
+  #toggle { position: fixed; top: env(safe-area-inset-top, 0); right: 0;
+            margin: .6rem; z-index: 3; -webkit-tap-highlight-color: transparent;
+            background: #000a; color: var(--dim); border: 1px solid var(--grid);
+            border-radius: 999px; padding: .4rem .8rem; font: inherit; cursor: pointer; }
+  #toggle:hover, #toggle.on { color: var(--accent); border-color: var(--accent); }
+
+  /* Build-process panel, hidden until toggled. */
+  #build { position: fixed; inset: 0; z-index: 2; overflow-y: auto;
+           background: #050505f2; -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+           padding: calc(env(safe-area-inset-top,0) + 3rem) 1.2rem 3rem; display: none; }
+  #build.open { display: block; }
+  #build h2 { color: var(--bright); font-size: 1.1rem; margin: 0 0 .2rem; }
+  #build .sub { color: var(--dim); margin: 0 0 1.4rem; max-width: 34rem; }
+  .iter { border-left: 2px solid var(--grid); padding: 0 0 .1rem 1rem; margin: 0 0 1.4rem;
+          max-width: 40rem; }
+  .iter .ver { color: var(--accent); font-weight: 600; }
+  .iter .date { color: var(--dim); margin-left: .5rem; font-size: .82rem; }
+  .iter h3 { margin: .1rem 0 .4rem; color: var(--bright); font-size: .95rem; font-weight: 600; }
+  .iter ul { margin: 0; padding-left: 1.1rem; }
+  .iter li { margin: .15rem 0; }
+  .iter li::marker { color: var(--dim); }
+
+  /* Compact live legend, bottom-left, part of the graph surface. */
+  #legend { position: fixed; left: env(safe-area-inset-left,0); bottom: env(safe-area-inset-bottom,0);
+            margin: .6rem; z-index: 1; display: flex; gap: .9rem; pointer-events: none;
+            text-shadow: 0 0 4px #000, 0 0 4px #000; }
+  #legend span { display: inline-flex; align-items: center; gap: .3rem; }
+  #legend i { width: .7rem; height: .7rem; border-radius: 2px; display: inline-block; }
+</style>
+</head>
+<body>
+
+<canvas id="graph"></canvas>
+
+<div id="legend" aria-hidden="true">
+  <span><i style="background:var(--x)"></i>x <b id="vx">—</b></span>
+  <span><i style="background:var(--y)"></i>y <b id="vy">—</b></span>
+  <span><i style="background:var(--z)"></i>z <b id="vz">—</b></span>
+</div>
+
+<button id="toggle" aria-expanded="false">build ▸</button>
+
+<div id="build" role="region" aria-label="Iterative build log">
+  <h2>accelCard — build log</h2>
+  <p class="sub">This tool is being built iteratively. Each pass below records what changed.
+  Tap <b>build</b> again to return to the graph.</p>
+  <div id="iters"></div>
+</div>
+
+<div id="start" role="button" tabindex="0">
+  <h1>accelCard</h1>
+  <p>A live graph of the phone's accelerometer, filling the screen.</p>
+  <div class="tap">tap anywhere to start</div>
+  <p style="font-size:.82rem">Needs <code>https://</code>. iOS asks permission once.</p>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+
+// ── The iterative building process (rendered by the toggle) ───────────────
+const BUILD_LOG = [
+  {
+    ver: "v1", date: "2026-08-28", title: "Full-screen accelerometer graph",
+    notes: [
+      "Single static HTML file, no dependencies — call it accelCard.",
+      "Graph fills the entire screen; a scrolling line chart of x / y / z acceleration.",
+      "Only chrome over the graph: one 'build' toggle that reveals this log.",
+      "Tap-to-start overlay handles the iOS motion-permission prompt, then disappears.",
+      "Auto-scaling y-axis with a zero reference line and a live x/y/z legend."
+    ]
+  }
+];
+
+function renderBuild() {
+  $("iters").innerHTML = BUILD_LOG.map(it => `
+    <div class="iter">
+      <div><span class="ver">${it.ver}</span><span class="date">${it.date}</span></div>
+      <h3>${it.title}</h3>
+      <ul>${it.notes.map(n => `<li>${n}</li>`).join("")}</ul>
+    </div>`).join("");
+}
+renderBuild();
+
+// ── Toggle: graph ⟷ build log ─────────────────────────────────────────────
+const toggleBtn = $("toggle"), buildPanel = $("build");
+function toggleBuild() {
+  const open = buildPanel.classList.toggle("open");
+  toggleBtn.classList.toggle("on", open);
+  toggleBtn.textContent = open ? "graph ◂" : "build ▸";
+  toggleBtn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+toggleBtn.onclick = toggleBuild;
+
+// ── Graph state ───────────────────────────────────────────────────────────
+const canvas = $("graph"), ctx = canvas.getContext("2d");
+const COLORS = { x: "#ff5d5d", y: "#5dff9b", z: "#5db2ff" };
+const WINDOW_S = 8;            // seconds of history shown across the width
+const buf = { x: [], y: [], z: [], t: [] };
+let running = false, dpr = 1, W = 0, H = 0;
+let scale = 12;               // ±m/s² mapped to half-height; adapts to data
+
+function fitCanvas() {
+  dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener("resize", fitCanvas);
+fitCanvas();
+
+function onMotion(e) {
+  const a = e.accelerationIncludingGravity || e.acceleration;
+  if (!a) return;
+  const t = performance.now() / 1000;
+  buf.x.push(a.x || 0); buf.y.push(a.y || 0); buf.z.push(a.z || 0); buf.t.push(t);
+  // Drop samples older than the visible window (+ a little slack).
+  const cutoff = t - WINDOW_S - 0.5;
+  while (buf.t.length && buf.t[0] < cutoff) {
+    buf.x.shift(); buf.y.shift(); buf.z.shift(); buf.t.shift();
+  }
+}
+
+function drawGrid(mid) {
+  ctx.strokeStyle = "#1b1b1b"; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 1; i < WINDOW_S; i++) { const x = W * i / WINDOW_S; ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+  ctx.stroke();
+  // Zero reference line.
+  ctx.strokeStyle = "#333"; ctx.beginPath();
+  ctx.moveTo(0, mid); ctx.lineTo(W, mid); ctx.stroke();
+}
+
+function drawTrace(key, now) {
+  const arr = buf[key], ts = buf.t, mid = H / 2, k = (H / 2) / scale;
+  ctx.strokeStyle = COLORS[key]; ctx.lineWidth = 1.8;
+  ctx.lineJoin = "round"; ctx.beginPath();
+  let started = false;
+  for (let i = 0; i < arr.length; i++) {
+    const x = W - (now - ts[i]) / WINDOW_S * W;
+    if (x < -2) continue;
+    const y = mid - arr[i] * k;
+    started ? ctx.lineTo(x, y) : (ctx.moveTo(x, y), started = true);
+  }
+  ctx.stroke();
+}
+
+function loop() {
+  if (!running) return;
+  const now = performance.now() / 1000;
+  ctx.clearRect(0, 0, W, H);
+
+  // Adapt vertical scale to the current window's peak, smoothly.
+  let peak = 4;
+  for (let i = 0; i < buf.t.length; i++)
+    peak = Math.max(peak, Math.abs(buf.x[i]), Math.abs(buf.y[i]), Math.abs(buf.z[i]));
+  const target = Math.min(40, peak * 1.15);
+  scale += (target - scale) * 0.05;
+
+  drawGrid(H / 2);
+  drawTrace("z", now); drawTrace("y", now); drawTrace("x", now);
+
+  const n = buf.t.length - 1;
+  if (n >= 0) {
+    $("vx").textContent = buf.x[n].toFixed(1);
+    $("vy").textContent = buf.y[n].toFixed(1);
+    $("vz").textContent = buf.z[n].toFixed(1);
+  }
+  requestAnimationFrame(loop);
+}
+
+// ── Start / permission ────────────────────────────────────────────────────
+async function start() {
+  try {
+    if (typeof DeviceMotionEvent !== "undefined" &&
+        typeof DeviceMotionEvent.requestPermission === "function") {
+      const p = await DeviceMotionEvent.requestPermission();
+      if (p !== "granted") { showError("motion permission denied"); return; }
+    }
+  } catch (err) { showError("permission error: " + err.message); return; }
+
+  if (typeof DeviceMotionEvent === "undefined") { showError("no motion sensor on this device"); return; }
+
+  window.addEventListener("devicemotion", onMotion);
+  $("start").classList.add("hidden");
+  running = true;
+  requestAnimationFrame(loop);
+}
+function showError(msg) {
+  const s = $("start");
+  s.querySelector(".tap").textContent = msg;
+  s.querySelector(".tap").style.color = "var(--x)";
+}
+const startEl = $("start");
+startEl.addEventListener("click", start);
+startEl.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") start(); });
+</script>
+</body>
+</html>
