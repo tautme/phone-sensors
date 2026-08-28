@@ -81,8 +81,8 @@
 
 <div id="start" role="button" tabindex="0">
   <h1>accelCard</h1>
-  <p>A spring-bounce meter. Graphs the phone's up/down acceleration; each half-bounce
-     resets to the left and overlays on the last.</p>
+  <p>A spring-bounce meter. Graphs the phone's up/down acceleration; the trace resets to the
+     left at each bounce peak and overlays on the last.</p>
   <div class="tap">tap anywhere to start</div>
   <p style="font-size:.82rem">Needs <code>https://</code>. iOS asks permission once.</p>
 </div>
@@ -93,6 +93,20 @@ const $ = id => document.getElementById(id);
 
 // ── The iterative building process (rendered by the toggle) ───────────────
 const BUILD_LOG = [
+  {
+    ver: "v3", date: "2026-08-28", title: "Peak trigger at the bounce turning points",
+    notes: [
+      "Switched the reset from a zero-crossing to a peak trigger: the sweep now resets at each " +
+        "turning point — the maximum and minimum of the acceleration, the true top and bottom of " +
+        "the bounce.",
+      "A turning point is confirmed once the signal reverses past a hysteresis band, so a peak " +
+        "isn't declared until the bounce has clearly rolled over.",
+      "The hysteresis scales with recent bounce amplitude (with a floor), rejecting sensor jitter " +
+        "on small bounces without missing reversals on big ones.",
+      "Each overlaid trace now spans peak-to-peak (one half-bounce); T and f still measure the " +
+        "full period between alternating turning points."
+    ]
+  },
   {
     ver: "v2", date: "2026-08-28", title: "Y-axis spring-bounce oscilloscope",
     notes: [
@@ -141,7 +155,8 @@ toggleBtn.onclick = toggleBuild;
 // ── Graph state ───────────────────────────────────────────────────────────
 const canvas = $("graph"), ctx = canvas.getContext("2d");
 const MAX_OVERLAY = 14;      // how many past half-bounce traces to keep on screen
-const DEADBAND = 0.6;        // m/s²; ignore sign flips inside ±this (noise near zero)
+const HYST_FRAC = 0.25;      // reversal must exceed this fraction of recent amplitude...
+const HYST_MIN = 0.6;        // ...or this many m/s², whichever is larger (noise gate)
 const MIN_HALF = 0.10;       // s; shortest half-bounce before a reset is allowed (debounce)
 const BASE_ALPHA = 0.02;     // high-pass strength for the gravity-removal fallback
 
@@ -152,7 +167,9 @@ let sweepWindow = 1.5, targetWindow = 1.5;  // seconds mapped across the full wi
 let traces = [];             // completed half-bounce traces (arrays of {rt, v})
 let current = [{ rt: 0, v: 0 }];
 let t0 = 0;                  // start time (s) of the current trace
-let committedSign = 0;       // last definite sign of the signal (+1 / -1)
+let dir = 0;                // +1 = tracking toward a max, -1 = toward a min, 0 = unknown
+let extVal = 0;             // running extreme (peak/valley) in the current direction
+let ampEst = 4;             // smoothed bounce amplitude, sets the reversal hysteresis
 let baseline = 0;            // slow DC estimate for the high-pass fallback
 let halfPrev = null, halfLast = null;  // durations of the last two half-bounces
 
@@ -190,22 +207,34 @@ function reset(t, v) {
   current = [{ rt: 0, v }];
 }
 
+// A confirmed peak/valley. Track its amplitude (which tunes the hysteresis)
+// and reset the sweep — unless it arrived too soon after the last one.
+function turningPoint(t, v) {
+  ampEst += (Math.abs(extVal) - ampEst) * 0.2;
+  if (t - t0 > MIN_HALF) reset(t, v);
+}
+
 function onMotion(e) {
   const v = readY(e);
   if (v == null) return;
   const t = performance.now() / 1000;
+  current.push({ rt: t - t0, v });
 
-  // Zero-crossing-with-reversal detection, with a deadband around zero so
-  // sensor noise near the crossing doesn't trigger spurious resets.
-  let s = committedSign;
-  if (v > DEADBAND) s = 1; else if (v < -DEADBAND) s = -1;
-  if (s !== 0 && s !== committedSign) {
-    const wasSigned = committedSign !== 0;
-    committedSign = s;
-    if (wasSigned && (t - t0) > MIN_HALF) { reset(t, v); return; }
+  // Peak trigger: reset at each turning point of the bounce — a maximum or
+  // minimum of the acceleration — the moment the signal reverses by more than
+  // the hysteresis band. That band scales with recent bounce amplitude so it
+  // rejects sensor jitter without missing real reversals.
+  const hyst = Math.max(HYST_MIN, ampEst * HYST_FRAC);
+  if (dir === 1) {
+    if (v > extVal) extVal = v;                       // still rising toward the peak
+    else if (v < extVal - hyst) { turningPoint(t, v); dir = -1; extVal = v; }
+  } else if (dir === -1) {
+    if (v < extVal) extVal = v;                       // still falling toward the valley
+    else if (v > extVal + hyst) { turningPoint(t, v); dir = 1; extVal = v; }
+  } else {
+    extVal = v; dir = v >= 0 ? 1 : -1;                // seed direction from first sample
   }
 
-  current.push({ rt: t - t0, v });
   if (t - t0 > sweepWindow * 4) reset(t, v);  // safety: don't grow unbounded if idle
 }
 
