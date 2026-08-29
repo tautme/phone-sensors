@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>FFT Analyzer</title>
+<style>
+  :root {
+    --bg: #000;
+    --ink: #e8e6df;
+    --muted: #8e8e98;
+    --accent: #ff7a6e;
+    --peak: #7ad0ff;
+    --grid: rgba(255,255,255,.10);
+    --panel: rgba(20,20,26,.72);
+    --rule: rgba(255,255,255,.14);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    overflow: hidden; overscroll-behavior: none;
+    font: 14px/1.4 ui-sans-serif, system-ui, sans-serif;
+  }
+  #stage { position: fixed; inset: 0; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  /* Frequency readout, top-left */
+  #readout {
+    position: fixed; top: env(safe-area-inset-top, 0); left: 0;
+    padding: .7rem .9rem; pointer-events: none;
+    font: 600 .8rem ui-monospace, monospace; color: var(--muted);
+    text-shadow: 0 1px 3px #000;
+  }
+  #readout .big {
+    font-size: 1.9rem; color: var(--ink); letter-spacing: -.01em;
+    display: block; margin-top: .1rem;
+  }
+  #readout .big.frozen { color: var(--peak); }
+  #readout .state { color: var(--accent); text-transform: uppercase; letter-spacing: .08em; }
+  #readout .state.frozen { color: var(--peak); }
+
+  /* Controls, bottom-center */
+  #controls {
+    position: fixed; left: 0; right: 0;
+    bottom: calc(env(safe-area-inset-bottom, 0) + 1.1rem);
+    display: flex; gap: .6rem; justify-content: center; padding: 0 1rem;
+  }
+  button {
+    padding: .95rem 1.6rem; min-width: 9.5rem;
+    background: var(--panel); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 999px;
+    font: 600 .95rem ui-sans-serif, system-ui, sans-serif;
+    cursor: pointer; touch-action: manipulation;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  button.primary { background: var(--accent); color: #180806; border-color: var(--accent); }
+  button.frozen  { background: var(--peak);  color: #04141c; border-color: var(--peak); }
+  button:active  { transform: translateY(1px); }
+  button:disabled { opacity: .45; }
+
+  /* Start / error overlay */
+  #overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 1.1rem;
+    padding: 2rem; text-align: center; background: var(--bg); z-index: 5;
+  }
+  #overlay h1 { font-size: 1.5rem; margin: 0; letter-spacing: -.01em; }
+  #overlay p { color: var(--muted); max-width: 26rem; margin: 0; font-size: .9rem; }
+  #overlay button { min-width: 12rem; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="fft"></canvas>
+</div>
+
+<div id="readout" class="hidden">
+  <span class="state" id="state">Live</span>
+  <span class="big" id="peakHz">—</span>
+</div>
+
+<div id="controls" class="hidden">
+  <button id="sample" class="primary">Take sample</button>
+</div>
+
+<div id="overlay">
+  <h1>FFT Analyzer</h1>
+  <p id="msg">Full-screen live spectrum of the microphone. Tap <b>Take sample</b> to freeze the graph and mark the peak frequency.</p>
+  <button id="start" class="primary">Start microphone</button>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const cv = document.getElementById("fft");
+  const ctx = cv.getContext("2d");
+  const overlay = document.getElementById("overlay");
+  const msgEl = document.getElementById("msg");
+  const startBtn = document.getElementById("start");
+  const sampleBtn = document.getElementById("sample");
+  const readout = document.getElementById("readout");
+  const stateEl = document.getElementById("state");
+  const peakHzEl = document.getElementById("peakHz");
+  const controls = document.getElementById("controls");
+
+  // ---- Display geometry ----------------------------------------------------
+  let W = 0, H = 0, dpr = 1;
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    cv.width = Math.round(W * dpr);
+    cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (frozen) drawFrozen();
+  }
+  window.addEventListener("resize", resize);
+  window.addEventListener("orientationchange", () => setTimeout(resize, 250));
+
+  // ---- Audio ---------------------------------------------------------------
+  let audioCtx = null, analyser = null, freqData = null;
+  let sampleRate = 48000, binHz = 1;
+  let running = false, frozen = false;
+  let frozenData = null, frozenPeak = null;
+
+  // Frequency axis: log scale from FMIN to Nyquist, matches how we hear.
+  const FMIN = 20;
+  let FMAX = 24000;
+
+  function xForFreq(f) {
+    const lo = Math.log10(FMIN), hi = Math.log10(FMAX);
+    const t = (Math.log10(Math.max(f, FMIN)) - lo) / (hi - lo);
+    return t * W;
+  }
+  function freqForX(x) {
+    const lo = Math.log10(FMIN), hi = Math.log10(FMAX);
+    return Math.pow(10, lo + (x / W) * (hi - lo));
+  }
+
+  async function start() {
+    startBtn.disabled = true;
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        }
+      });
+    } catch (err) {
+      fail("Microphone blocked: " + (err && err.message ? err.message : err) +
+           ". Allow mic access and reload. HTTPS is required.");
+      return;
+    }
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") { try { await audioCtx.resume(); } catch (e) {} }
+    sampleRate = audioCtx.sampleRate;
+    FMAX = sampleRate / 2;
+
+    const src = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 8192;              // ~5.9 Hz bins @48k, fine peak resolution
+    analyser.smoothingTimeConstant = 0.6;
+    analyser.minDecibels = -100;
+    analyser.maxDecibels = -20;
+    src.connect(analyser);
+
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    binHz = sampleRate / analyser.fftSize;
+
+    running = true;
+    overlay.classList.add("hidden");
+    readout.classList.remove("hidden");
+    controls.classList.remove("hidden");
+    resize();
+    requestAnimationFrame(loop);
+  }
+
+  function fail(text) {
+    msgEl.innerHTML = text;
+    msgEl.style.color = "var(--accent)";
+    startBtn.disabled = false;
+    startBtn.textContent = "Retry";
+  }
+
+  // ---- Peak detection (parabolic interpolation for sub-bin accuracy) -------
+  function findPeak(data) {
+    // Ignore DC / sub-20 Hz rumble.
+    const startBin = Math.max(1, Math.floor(FMIN / binHz));
+    let maxI = startBin, maxV = -1;
+    for (let i = startBin; i < data.length; i++) {
+      if (data[i] > maxV) { maxV = data[i]; maxI = i; }
+    }
+    // Parabolic interpolation using neighbours in dB space.
+    let delta = 0;
+    if (maxI > 0 && maxI < data.length - 1) {
+      const a = data[maxI - 1], b = data[maxI], c = data[maxI + 1];
+      const denom = (a - 2 * b + c);
+      if (denom !== 0) delta = 0.5 * (a - c) / denom;
+      if (!isFinite(delta) || Math.abs(delta) > 1) delta = 0;
+    }
+    return { hz: (maxI + delta) * binHz, mag: maxV };
+  }
+
+  // ---- Drawing -------------------------------------------------------------
+  function drawGrid() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.strokeStyle = "var(--grid)";
+    ctx.lineWidth = 1;
+    ctx.fillStyle = "rgba(255,255,255,.35)";
+    ctx.font = "11px ui-monospace, monospace";
+    ctx.textBaseline = "bottom";
+
+    const marks = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+    for (const f of marks) {
+      if (f > FMAX) break;
+      const x = xForFreq(f);
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(x + 0.5, 0);
+      ctx.lineTo(x + 0.5, H);
+      ctx.strokeStyle = "rgba(255,255,255,.08)";
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "rgba(255,255,255,.40)";
+      const label = f >= 1000 ? (f / 1000) + "k" : String(f);
+      ctx.fillText(label, x + 3, H - 4);
+    }
+    // horizontal amplitude gridlines
+    for (let i = 1; i < 4; i++) {
+      const y = (H * i) / 4;
+      ctx.beginPath();
+      ctx.moveTo(0, y + 0.5);
+      ctx.lineTo(W, y + 0.5);
+      ctx.strokeStyle = "rgba(255,255,255,.05)";
+      ctx.stroke();
+    }
+  }
+
+  function drawSpectrum(data, color) {
+    // Map each pixel column to the strongest bin whose frequency lands there,
+    // so the log axis stays smooth across the whole width.
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    let prevX = -1, colMax = 0;
+    for (let i = 1; i < data.length; i++) {
+      const f = i * binHz;
+      if (f < FMIN) continue;
+      if (f > FMAX) break;
+      const x = xForFreq(f);
+      const v = data[i] / 255;
+      if (Math.floor(x) === prevX) {
+        if (v > colMax) colMax = v;
+      } else {
+        if (prevX >= 0) {
+          const y = H - colMax * H * 0.94;
+          ctx.lineTo(prevX, y);
+        }
+        prevX = Math.floor(x);
+        colMax = v;
+      }
+    }
+    const y = H - colMax * H * 0.94;
+    ctx.lineTo(prevX, y);
+    ctx.lineTo(W, H);
+    ctx.closePath();
+
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, color.top);
+    grad.addColorStop(1, color.bottom);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.strokeStyle = color.line;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  function drawPeakMarker(peak, frozenMode) {
+    const x = xForFreq(peak.hz);
+    ctx.save();
+    ctx.strokeStyle = frozenMode
+      ? getComputedStyle(document.documentElement).getPropertyValue("--peak").trim() || "#7ad0ff"
+      : "rgba(255,122,110,.9)";
+    ctx.lineWidth = frozenMode ? 2 : 1.5;
+    if (!frozenMode) ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, 0);
+    ctx.lineTo(x + 0.5, H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // label bubble
+    const text = fmtHz(peak.hz);
+    ctx.font = "600 13px ui-monospace, monospace";
+    const tw = ctx.measureText(text).width;
+    const padX = 8, bw = tw + padX * 2, bh = 24;
+    let bx = x + 8;
+    if (bx + bw > W) bx = x - 8 - bw;
+    const by = Math.max(6, H * 0.12);
+    ctx.fillStyle = frozenMode ? "rgba(122,208,255,.92)" : "rgba(255,122,110,.92)";
+    roundRect(bx, by, bw, bh, 6);
+    ctx.fill();
+    ctx.fillStyle = frozenMode ? "#04141c" : "#180806";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, bx + padX, by + bh / 2 + 1);
+    ctx.restore();
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function fmtHz(hz) {
+    if (hz >= 1000) return (hz / 1000).toFixed(hz >= 10000 ? 1 : 2) + " kHz";
+    return hz.toFixed(hz < 100 ? 1 : 0) + " Hz";
+  }
+
+  const liveColor  = { top: "rgba(255,122,110,.55)", bottom: "rgba(255,122,110,.04)", line: "rgba(255,148,138,.95)" };
+  const frozeColor = { top: "rgba(122,208,255,.55)", bottom: "rgba(122,208,255,.04)", line: "rgba(150,216,255,.95)" };
+
+  function loop() {
+    if (!running || frozen) return;
+    analyser.getByteFrequencyData(freqData);
+    drawGrid();
+    drawSpectrum(freqData, liveColor);
+    const peak = findPeak(freqData);
+    if (peak.mag > 0) {
+      drawPeakMarker(peak, false);
+      peakHzEl.textContent = fmtHz(peak.hz);
+    } else {
+      peakHzEl.textContent = "—";
+    }
+    requestAnimationFrame(loop);
+  }
+
+  function drawFrozen() {
+    if (!frozenData) return;
+    drawGrid();
+    drawSpectrum(frozenData, frozeColor);
+    if (frozenPeak) drawPeakMarker(frozenPeak, true);
+  }
+
+  // ---- Sample / freeze toggle ---------------------------------------------
+  function takeSample() {
+    frozen = true;
+    frozenData = freqData.slice();          // snapshot
+    frozenPeak = findPeak(frozenData);
+    drawFrozen();
+    stateEl.textContent = "Frozen";
+    stateEl.classList.add("frozen");
+    peakHzEl.classList.add("frozen");
+    peakHzEl.textContent = frozenPeak.mag > 0 ? fmtHz(frozenPeak.hz) : "—";
+    sampleBtn.textContent = "Resume live";
+    sampleBtn.classList.remove("primary");
+    sampleBtn.classList.add("frozen");
+  }
+
+  function resumeLive() {
+    frozen = false;
+    frozenData = null; frozenPeak = null;
+    stateEl.textContent = "Live";
+    stateEl.classList.remove("frozen");
+    peakHzEl.classList.remove("frozen");
+    sampleBtn.textContent = "Take sample";
+    sampleBtn.classList.add("primary");
+    sampleBtn.classList.remove("frozen");
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    requestAnimationFrame(loop);
+  }
+
+  sampleBtn.addEventListener("click", () => {
+    if (!running) return;
+    if (frozen) resumeLive(); else takeSample();
+  });
+
+  startBtn.addEventListener("click", start);
+})();
+</script>
+</body>
+</html>
